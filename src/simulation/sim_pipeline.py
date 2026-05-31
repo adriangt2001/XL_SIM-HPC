@@ -31,10 +31,10 @@ class SimulatorPipeline:
     def __init__(self, noise: ImageNoiseModel = None, microscope: Microscope = None, device: str = "cuda", device_id: int = 0):
         self.device = torch.device(device, device_id)
         if microscope is None:
-            microscope = Microscope(device=self.device)
+            microscope = Microscope(device=device, device_id=device_id)
 
         if noise is None:
-            noise = ImageNoiseModel(device=self.device)
+            noise = ImageNoiseModel(device=device, device_id=device_id)
 
         self.noise = noise
         self.microscope = microscope

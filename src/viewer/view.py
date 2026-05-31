@@ -8,7 +8,7 @@ from skimage.io import imread
 
 from src.simulation.microscope import Microscope
 from src.simulation.sim_pipeline import SimulatorPipeline
-from utils.datasets import get_data
+from src.utils.datasets import get_data
 
 from .widgets import reconstruction, simulation
 
