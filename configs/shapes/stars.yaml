@@ -1,0 +1,52 @@
+seed: 42
+
+output_dir: ./data/synth_dataset/stars
+
+image_size: [512, 512]
+
+background_color: 0.0
+
+aa_width: 1.5
+
+save_metadata: true
+
+image_types:
+  - name: "stars_only"
+    count: 50
+    shapes:
+      - type: "Star"  # Filled star shape
+        count: [1, 3]
+        params:
+          center: [[0.2, 0.8], [0.2, 0.8]]
+
+          # Outer radius (tip of the star points)
+          outer_radius: [0.08, 0.15]
+
+          # OPTION A: Use inner_ratio (recommended)
+          # Inner radius as ratio of outer radius
+          # 0.5 means inner radius is 50% of outer radius
+          inner_ratio: [0.3, 0.7]
+
+          # OPTION B: Use inner_radius directly (if inner_ratio not specified)
+          # Explicitly set inner radius range
+          # inner_radius: [0.03, 0.08]
+
+          # Number of star arms
+          # Can be fixed: n_arms: 5
+          # Or range: n_arms: [4, 7] (will pick 4, 5, 6, or 7)
+          n_arms: [5, 6]
+
+          # Rotation angle in radians (0 to 2π ≈ 6.28318)
+          angle: [0.0, 6.28318]
+
+          brightness: [0.6, 1.0]
+      
+      - type: "StarContour" # Star outline
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          n_arms: 5
+          outer_radius: [0.06, 0.12]
+          inner_ratio: [0.4, 0.6]
+          thickness: [0.003, 0.01]
+          brightness: [0.7, 1.0]

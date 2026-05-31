@@ -1,0 +1,40 @@
+seed: 42
+
+output_dir: ./data/synth_dataset/polygons
+
+image_size: [512, 512]
+
+background_color: 0.0
+
+aa_width: 1.5
+
+save_metadata: true
+
+image_types:
+  - name: "polygons"
+    count: 50
+    shapes:
+      - type: "Polygon"  # Filled polygon
+        count: [2, 4]
+        params:
+          center: [[0.1, 0.9], [0.1, 0.9]]
+
+          # Radius from center to vertices
+          radius: [0.08, 0.18]
+
+          # Number of sides
+          # 3 = triangle, 4 = square, 5 = pentagon, etc.
+          n_sides: [3, 8]
+
+          angle: [0.0, 6.28318]
+          brightness: [0.5, 1.0]
+      
+      - type: "PolygonContour" # Polygon outline
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          radius: [0.1, 0.2]
+          n_sides: [4, 6]
+          thickness: [0.004, 0.01]
+          angle: [0.0, 6.28318]
+          brightness: [0.6, 1.0]

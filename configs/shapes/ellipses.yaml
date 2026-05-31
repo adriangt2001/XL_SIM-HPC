@@ -1,0 +1,41 @@
+seed: 42
+
+output_dir: ./data/synth_dataset/ellipses
+
+image_size: [512, 512]
+
+background_color: 0.0
+
+aa_width: 1.5
+
+save_metadata: true
+
+image_types:
+  - name: "ellipses"
+    count: 50
+    shapes:
+      - type: "Ellipse"  # Filled ellipse
+        count: [1, 4]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Semi-major axis (half the long axis length)
+          semi_major: [0.1, 0.25]
+
+          # Semi-minor axis (half the short axis length)
+          semi_minor: [0.05, 0.15]
+
+          # Rotation angle
+          angle: [0.0, 3.14159]  # 0 to π
+
+          brightness: [0.5, 1.0]
+
+      - type: "EllipseContour" # Ellipse outline
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          semi_major: [0.08, 0.2]
+          semi_minor: [0.04, 0.12]
+          thickness: [0.005, 0.012]
+          angle: [0.0, 6.28318]
+          brightness: [0.5, 0.9]

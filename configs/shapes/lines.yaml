@@ -1,0 +1,37 @@
+seed: 42
+
+output_dir: ./data/synth_dataset/lines
+
+image_size: [512, 512]
+
+background_color: 0.0
+
+aa_width: 1.5
+
+save_metadata: true
+
+image_types:
+  - name: "lines_and_segments"
+    count: 50
+    shapes:
+      # Line segment (finite line between two points)
+      - type: "Segment"
+        count: [3, 8]
+        params:
+          # Start point: [[x_min, x_max], [y_min, y_max]]
+          point1: [[0.0, 1.0], [0.0, 1.0]]
+
+          # End point: [[x_min, x_max], [y_min, y_max]]
+          point2: [[0.0, 1.0], [0.0, 1.0]]
+
+          thickness: [0.002, 0.008]
+          brightness: [0.5, 0.9]
+
+      # Infinite line passing through two points
+      - type: "Line"
+        count: [0, 2]
+        params:
+          point1: [[0.0, 1.0], [0.0, 1.0]]
+          point2: [[0.0, 1.0], [0.0, 1.0]]
+          thickness: [0.003, 0.01]
+          brightness: [0.4, 0.8]

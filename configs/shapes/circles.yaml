@@ -1,0 +1,41 @@
+seed: 42
+
+output_dir: ./data/synth_dataset/circles
+
+image_size: [512, 512]
+
+background_color: 0.0
+
+aa_width: 1.5
+
+save_metadata: true
+
+image_types:
+  - name: "circles_only"
+    count: 100  # Generate 100 images of this type
+    shapes:
+      - type: "Circle"  # Filled circle
+        count: [2, 5]   # Each image will have 2 to 5 circles
+        params:
+          # Center position: [[x_min, x_max], [y_min, y_max]]
+          # Use [0.1, 0.9] to keep shapes away from edges
+          center: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Radius range (normalized to image width)
+          # Example: 0.1 on a 512px image = ~51px radius
+          radius: [0.05, 0.2]
+
+          # Brightness range (grayscale intensity)
+          brightness: [0.5, 1.0]
+
+      # Circumference (circle outline)
+      - type: "Circumference"
+        count: [1, 3]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          radius: [0.05, 0.15]
+          brightness: [0.6, 1.0]
+
+          # Line thickness (normalized to image width)
+          thickness: [0.005, 0.015]
+

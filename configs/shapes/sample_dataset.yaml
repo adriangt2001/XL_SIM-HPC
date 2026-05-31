@@ -1,0 +1,236 @@
+seed: 42
+
+output_dir: ./data/synth_dataset/sample
+
+image_size: [1024, 1024]
+
+background_color: 0.0
+
+aa_width: 1.5
+
+save_metadata: true
+
+image_types:
+  - name: "brownian"
+    count: 50
+    shapes:
+      - type: "Brownian" # Polygon outline
+        count: [1, 2]
+        params:
+          num_steps: [100, 200]
+          total_time: [2.0, 4.0]
+          delta: [0.25, 0.5]
+          thickness: [0.001, 0.01]
+          brightness: [0.5, 1.0]
+  - name: "circles_only"
+    count: 100  # Generate 100 images of this type
+    shapes:
+      - type: "Circle"  # Filled circle
+        count: [2, 5]   # Each image will have 2 to 5 circles
+        params:
+          # Center position: [[x_min, x_max], [y_min, y_max]]
+          # Use [0.1, 0.9] to keep shapes away from edges
+          center: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Radius range (normalized to image width)
+          # Example: 0.1 on a 512px image = ~51px radius
+          radius: [0.05, 0.2]
+
+          # Brightness range (grayscale intensity)
+          brightness: [0.5, 1.0]
+
+      # Circumference (circle outline)
+      - type: "Circumference"
+        count: [1, 3]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          radius: [0.05, 0.15]
+          brightness: [0.6, 1.0]
+
+          # Line thickness (normalized to image width)
+          thickness: [0.005, 0.015]
+  - name: "curves"
+    count: 30
+    shapes:
+      # Bezier curve
+      - type: "BezierCurve"
+        count: [2, 5]
+        params:
+          # Start point of the curve
+          start: [[0.0, 1.0], [0.0, 1.0]]
+
+          # End point of the curve
+          end: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Range where control points can be placed
+          control_points_range: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Number of control points
+          # More control points = more complex curves
+          n_controls: [0, 5]
+
+          thickness: [0.003, 0.01]
+          brightness: [0.6, 1.0]
+
+      # Closed bezier curve (forms a closed shape)
+      - type: "ClosedBezierCurve"
+        count: [0, 2]
+        params:
+          # Center of the closed curve
+          center: [[0.2, 0.8], [0.2, 0.8]]
+
+          # Base radius for the curve
+          radius: [0.05, 0.15]
+
+          # How much control points vary from the base radius
+          # 0.5-1.5 means points can be 50% to 150% of base radius
+          radius_variation: [0.5, 1.5]
+
+          # Number of control points around the center
+          n_points: [4, 8]
+
+          thickness: [0.004, 0.012]
+          brightness: [0.5, 0.9]
+
+      # Spline (smooth curve through points)
+      - type: "Spline"
+        count: [1, 3]
+        params:
+          # Range where control points can be placed
+          points_range: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Number of points the spline passes through
+          n_points: [3, 8]
+
+          thickness: [0.003, 0.009]
+          brightness: [0.6, 1.0]
+
+      # Closed spline (smooth closed curve)
+      - type: "ClosedSpline"
+        count: [0, 2]
+        params:
+          center: [[0.2, 0.8], [0.2, 0.8]]
+          radius: [0.06, 0.14]
+          radius_variation: [0.6, 1.4]
+          n_points: [4, 7]
+          thickness: [0.004, 0.01]
+          brightness: [0.5, 0.9]
+  - name: "ellipses"
+    count: 50
+    shapes:
+      - type: "Ellipse"  # Filled ellipse
+        count: [1, 4]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Semi-major axis (half the long axis length)
+          semi_major: [0.1, 0.25]
+
+          # Semi-minor axis (half the short axis length)
+          semi_minor: [0.05, 0.15]
+
+          # Rotation angle
+          angle: [0.0, 3.14159]  # 0 to π
+
+          brightness: [0.5, 1.0]
+
+      - type: "EllipseContour" # Ellipse outline
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          semi_major: [0.08, 0.2]
+          semi_minor: [0.04, 0.12]
+          thickness: [0.005, 0.012]
+          angle: [0.0, 6.28318]
+          brightness: [0.5, 0.9]
+  - name: "lines_and_segments"
+    count: 50
+    shapes:
+      # Line segment (finite line between two points)
+      - type: "Segment"
+        count: [3, 8]
+        params:
+          # Start point: [[x_min, x_max], [y_min, y_max]]
+          point1: [[0.0, 1.0], [0.0, 1.0]]
+
+          # End point: [[x_min, x_max], [y_min, y_max]]
+          point2: [[0.0, 1.0], [0.0, 1.0]]
+
+          thickness: [0.002, 0.008]
+          brightness: [0.5, 0.9]
+
+      # Infinite line passing through two points
+      - type: "Line"
+        count: [0, 2]
+        params:
+          point1: [[0.0, 1.0], [0.0, 1.0]]
+          point2: [[0.0, 1.0], [0.0, 1.0]]
+          thickness: [0.003, 0.01]
+          brightness: [0.4, 0.8]
+  - name: "polygons"
+    count: 50
+    shapes:
+      - type: "Polygon"  # Filled polygon
+        count: [2, 4]
+        params:
+          center: [[0.1, 0.9], [0.1, 0.9]]
+
+          # Radius from center to vertices
+          radius: [0.08, 0.18]
+
+          # Number of sides
+          # 3 = triangle, 4 = square, 5 = pentagon, etc.
+          n_sides: [3, 8]
+
+          angle: [0.0, 6.28318]
+          brightness: [0.5, 1.0]
+      
+      - type: "PolygonContour" # Polygon outline
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          radius: [0.1, 0.2]
+          n_sides: [4, 6]
+          thickness: [0.004, 0.01]
+          angle: [0.0, 6.28318]
+          brightness: [0.6, 1.0]
+  - name: "stars_only"
+    count: 50
+    shapes:
+      - type: "Star"  # Filled star shape
+        count: [1, 3]
+        params:
+          center: [[0.2, 0.8], [0.2, 0.8]]
+
+          # Outer radius (tip of the star points)
+          outer_radius: [0.08, 0.15]
+
+          # OPTION A: Use inner_ratio (recommended)
+          # Inner radius as ratio of outer radius
+          # 0.5 means inner radius is 50% of outer radius
+          inner_ratio: [0.3, 0.7]
+
+          # OPTION B: Use inner_radius directly (if inner_ratio not specified)
+          # Explicitly set inner radius range
+          # inner_radius: [0.03, 0.08]
+
+          # Number of star arms
+          # Can be fixed: n_arms: 5
+          # Or range: n_arms: [4, 7] (will pick 4, 5, 6, or 7)
+          n_arms: [5, 6]
+
+          # Rotation angle in radians (0 to 2π ≈ 6.28318)
+          angle: [0.0, 6.28318]
+
+          brightness: [0.6, 1.0]
+      
+      - type: "StarContour" # Star outline
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          n_arms: 5
+          outer_radius: [0.06, 0.12]
+          inner_ratio: [0.4, 0.6]
+          thickness: [0.003, 0.01]
+          brightness: [0.7, 1.0]
+  

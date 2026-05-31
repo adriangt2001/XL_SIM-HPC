@@ -1,0 +1,17 @@
+dataset: data/DIV2K
+model_name: Swin2SR
+
+first_crop: 256
+second_crop: 64
+upsampling: 2
+
+num_iterations: 5000
+lr: 1e-3
+batch_size: 16
+max_grad_norm: 1.0
+
+save_every: 50
+output_dir: checkpoints
+
+report_scalar_rate: 5
+report_image_rate: 25

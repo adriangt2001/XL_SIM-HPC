@@ -1,0 +1,449 @@
+# =============================================================================
+# DATASET GENERATOR - COMPREHENSIVE CONFIGURATION EXAMPLE
+# =============================================================================
+#
+# This file demonstrates all available configuration options for the image
+# dataset generator. Use this as a reference when creating your own configs.
+#
+# All spatial parameters use normalized coordinates (0.0 to 1.0) where:
+#   - 0.0 = left/top edge of the image
+#   - 1.0 = right/bottom edge of the image
+#
+# All parameters that control randomization are specified as ranges: [min, max]
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# GLOBAL SETTINGS
+# -----------------------------------------------------------------------------
+
+# Random seed for reproducibility (required)
+# Same seed + same config = same dataset every time
+seed: 42
+
+# Output directory path (required)
+# Must be empty or non-existent - generator won't overwrite existing files
+output_dir: ./data/synth_dataset
+
+# Image dimensions in pixels: [width, height] (required)
+# Example: [512, 512] creates 512x512 pixel images
+image_size: [512, 512]
+
+# Background color (required)
+# Grayscale value from 0.0 (black) to 1.0 (white)
+background_color: 0.0
+
+# Anti-aliasing width in pixels (optional, default: 1.0)
+# Higher values = smoother edges but slower rendering
+# Typical range: 1.0 to 2.0
+aa_width: 1.5
+
+# Save JSON metadata for each image (optional, default: false)
+# Metadata contains all shape parameters for each generated image
+save_metadata: true
+
+# -----------------------------------------------------------------------------
+# IMAGE TYPES
+# -----------------------------------------------------------------------------
+# Define different types of images to generate. Each type can have different
+# shapes and parameters. Useful for creating varied datasets.
+
+image_types:
+
+  # ===========================================================================
+  # EXAMPLE 1: CIRCLES
+  # ===========================================================================
+  - name: "circles_only"
+    count: 100  # Generate 100 images of this type
+    shapes:
+      - type: "Circle"  # Filled circle
+        count: [2, 5]   # Each image will have 2 to 5 circles
+        params:
+          # Center position: [[x_min, x_max], [y_min, y_max]]
+          # Use [0.1, 0.9] to keep shapes away from edges
+          center: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Radius range (normalized to image width)
+          # Example: 0.1 on a 512px image = ~51px radius
+          radius: [0.05, 0.2]
+
+          # Brightness range (grayscale intensity)
+          brightness: [0.5, 1.0]
+
+  # ===========================================================================
+  # EXAMPLE 2: STARS
+  # ===========================================================================
+  - name: "stars_only"
+    count: 50
+    shapes:
+      - type: "Star"  # Filled star shape
+        count: [1, 3]
+        params:
+          center: [[0.2, 0.8], [0.2, 0.8]]
+
+          # Outer radius (tip of the star points)
+          outer_radius: [0.08, 0.15]
+
+          # OPTION A: Use inner_ratio (recommended)
+          # Inner radius as ratio of outer radius
+          # 0.5 means inner radius is 50% of outer radius
+          inner_ratio: [0.3, 0.7]
+
+          # OPTION B: Use inner_radius directly (if inner_ratio not specified)
+          # Explicitly set inner radius range
+          # inner_radius: [0.03, 0.08]
+
+          # Number of star arms
+          # Can be fixed: n_arms: 5
+          # Or range: n_arms: [4, 7] (will pick 4, 5, 6, or 7)
+          n_arms: [5, 6]
+
+          # Rotation angle in radians (0 to 2π ≈ 6.28318)
+          angle: [0.0, 6.28318]
+
+          brightness: [0.6, 1.0]
+
+  # ===========================================================================
+  # EXAMPLE 3: ELLIPSES
+  # ===========================================================================
+  - name: "ellipses"
+    count: 50
+    shapes:
+      - type: "Ellipse"  # Filled ellipse
+        count: [1, 4]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Semi-major axis (half the long axis length)
+          semi_major: [0.1, 0.25]
+
+          # Semi-minor axis (half the short axis length)
+          semi_minor: [0.05, 0.15]
+
+          # Rotation angle
+          angle: [0.0, 3.14159]  # 0 to π
+
+          brightness: [0.5, 1.0]
+
+  # ===========================================================================
+  # EXAMPLE 4: POLYGONS
+  # ===========================================================================
+  - name: "polygons"
+    count: 50
+    shapes:
+      - type: "Polygon"  # Filled polygon
+        count: [2, 4]
+        params:
+          center: [[0.1, 0.9], [0.1, 0.9]]
+
+          # Radius from center to vertices
+          radius: [0.08, 0.18]
+
+          # Number of sides
+          # 3 = triangle, 4 = square, 5 = pentagon, etc.
+          n_sides: [3, 8]
+
+          angle: [0.0, 6.28318]
+          brightness: [0.5, 1.0]
+
+  # ===========================================================================
+  # EXAMPLE 5: CONTOURS (OUTLINED SHAPES)
+  # ===========================================================================
+  - name: "contours"
+    count: 50
+    shapes:
+      # Circumference (circle outline)
+      - type: "Circumference"
+        count: [1, 3]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          radius: [0.05, 0.15]
+
+          # Line thickness (normalized to image width)
+          thickness: [0.005, 0.015]
+
+          brightness: [0.6, 1.0]
+
+      # Star outline
+      - type: "StarContour"
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          n_arms: 5
+          outer_radius: [0.06, 0.12]
+          inner_ratio: [0.4, 0.6]
+          thickness: [0.003, 0.01]
+          brightness: [0.7, 1.0]
+
+      # Ellipse outline
+      - type: "EllipseContour"
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          semi_major: [0.08, 0.2]
+          semi_minor: [0.04, 0.12]
+          thickness: [0.005, 0.012]
+          angle: [0.0, 6.28318]
+          brightness: [0.5, 0.9]
+
+      # Polygon outline
+      - type: "PolygonContour"
+        count: [0, 2]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          radius: [0.1, 0.2]
+          n_sides: [4, 6]
+          thickness: [0.004, 0.01]
+          angle: [0.0, 6.28318]
+          brightness: [0.6, 1.0]
+
+  # ===========================================================================
+  # EXAMPLE 6: LINES AND SEGMENTS
+  # ===========================================================================
+  - name: "lines_and_segments"
+    count: 50
+    shapes:
+      # Line segment (finite line between two points)
+      - type: "Segment"
+        count: [3, 8]
+        params:
+          # Start point: [[x_min, x_max], [y_min, y_max]]
+          point1: [[0.0, 1.0], [0.0, 1.0]]
+
+          # End point: [[x_min, x_max], [y_min, y_max]]
+          point2: [[0.0, 1.0], [0.0, 1.0]]
+
+          thickness: [0.002, 0.008]
+          brightness: [0.5, 0.9]
+
+      # Infinite line passing through two points
+      - type: "Line"
+        count: [0, 2]
+        params:
+          point1: [[0.0, 1.0], [0.0, 1.0]]
+          point2: [[0.0, 1.0], [0.0, 1.0]]
+          thickness: [0.003, 0.01]
+          brightness: [0.4, 0.8]
+
+  # ===========================================================================
+  # EXAMPLE 7: CURVES
+  # ===========================================================================
+  - name: "curves"
+    count: 30
+    shapes:
+      # Bezier curve
+      - type: "BezierCurve"
+        count: [2, 5]
+        params:
+          # Start point of the curve
+          start: [[0.0, 1.0], [0.0, 1.0]]
+
+          # End point of the curve
+          end: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Range where control points can be placed
+          control_points_range: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Number of control points
+          # More control points = more complex curves
+          n_controls: [0, 5]
+
+          thickness: [0.003, 0.01]
+          brightness: [0.6, 1.0]
+
+      # Closed bezier curve (forms a closed shape)
+      - type: "ClosedBezierCurve"
+        count: [0, 2]
+        params:
+          # Center of the closed curve
+          center: [[0.2, 0.8], [0.2, 0.8]]
+
+          # Base radius for the curve
+          radius: [0.05, 0.15]
+
+          # How much control points vary from the base radius
+          # 0.5-1.5 means points can be 50% to 150% of base radius
+          radius_variation: [0.5, 1.5]
+
+          # Number of control points around the center
+          n_points: [4, 8]
+
+          thickness: [0.004, 0.012]
+          brightness: [0.5, 0.9]
+
+      # Spline (smooth curve through points)
+      - type: "Spline"
+        count: [1, 3]
+        params:
+          # Range where control points can be placed
+          points_range: [[0.0, 1.0], [0.0, 1.0]]
+
+          # Number of points the spline passes through
+          n_points: [3, 8]
+
+          thickness: [0.003, 0.009]
+          brightness: [0.6, 1.0]
+
+      # Closed spline (smooth closed curve)
+      - type: "ClosedSpline"
+        count: [0, 2]
+        params:
+          center: [[0.2, 0.8], [0.2, 0.8]]
+          radius: [0.06, 0.14]
+          radius_variation: [0.6, 1.4]
+          n_points: [4, 7]
+          thickness: [0.004, 0.01]
+          brightness: [0.5, 0.9]
+
+  # ===========================================================================
+  # EXAMPLE 8: MIXED SHAPES (Common use case)
+  # ===========================================================================
+  - name: "mixed_scene"
+    count: 200
+    shapes:
+      # Layer 1: Background circles
+      - type: "Circle"
+        count: [1, 3]
+        params:
+          center: [[0.0, 1.0], [0.0, 1.0]]
+          radius: [0.04, 0.12]
+          brightness: [0.3, 0.6]
+
+      # Layer 2: Stars
+      - type: "Star"
+        count: [0, 2]
+        params:
+          center: [[0.1, 0.9], [0.1, 0.9]]
+          n_arms: [5, 7]
+          outer_radius: [0.06, 0.14]
+          inner_ratio: [0.35, 0.65]
+          angle: [0.0, 6.28318]
+          brightness: [0.5, 0.85]
+
+      # Layer 3: Segments
+      - type: "Segment"
+        count: [2, 6]
+        params:
+          point1: [[0.0, 1.0], [0.0, 1.0]]
+          point2: [[0.0, 1.0], [0.0, 1.0]]
+          thickness: [0.002, 0.006]
+          brightness: [0.6, 1.0]
+
+      # Layer 4: Circumferences (on top)
+      - type: "Circumference"
+        count: [0, 2]
+        params:
+          center: [[0.15, 0.85], [0.15, 0.85]]
+          radius: [0.08, 0.18]
+          thickness: [0.003, 0.008]
+          brightness: [0.7, 1.0]
+
+  # ===========================================================================
+  # EXAMPLE 9: CUSTOM COMPOSITE SHAPES
+  # ===========================================================================
+  # You can define custom shapes by creating a Python file with a shape class
+  # that has a generate() method. See custom_shapes/sheriff_star.py for example.
+
+  - name: "custom_composites"
+    count: 50
+    shapes:
+      - type: "SheriffStar"
+        # Path to Python file containing the SheriffStar class
+        custom_file: "./custom_shapes/sheriff_star.py"
+        count: [1, 2]
+        params:
+          center: [[0.2, 0.8], [0.2, 0.8]]
+
+          # Custom shape-specific parameters
+          circle_radius: [0.1, 0.18]
+          star_outer_radius: [0.07, 0.13]
+          star_inner_radius: [0.03, 0.06]
+          n_arms: 5
+          angle: [0.0, 6.28318]
+          brightness: [0.6, 1.0]
+
+# =============================================================================
+# PARAMETER REFERENCE
+# =============================================================================
+#
+# BUILTIN SHAPE TYPES:
+# --------------------
+# Filled shapes:
+#   - Circle: filled circle
+#   - Star: filled star with configurable arms
+#   - Ellipse: filled ellipse
+#   - Polygon: filled regular polygon (triangle, square, pentagon, etc.)
+#
+# Contour shapes (outlines):
+#   - Circumference: circle outline
+#   - StarContour: star outline
+#   - EllipseContour: ellipse outline
+#   - PolygonContour: polygon outline
+#
+# Lines:
+#   - Line: infinite line through two points
+#   - Segment: line segment between two points
+#   - SemiPlane: half-plane (everything on one side of a line)
+#
+# Curves:
+#   - BezierCurve: smooth curve with control points
+#   - ClosedBezierCurve: closed bezier curve
+#   - Spline: smooth curve through points
+#   - ClosedSpline: closed smooth curve
+#
+# COMMON PARAMETERS:
+# ------------------
+# All shapes support:
+#   - brightness: [min, max] - grayscale intensity (0.0 to 1.0)
+#
+# Position parameters use format: [[x_min, x_max], [y_min, y_max]]
+#   - center: position of the shape
+#   - point1, point2: for lines/segments
+#   - start, end: for curves
+#
+# Size parameters (normalized to image width):
+#   - radius: [min, max]
+#   - outer_radius, inner_radius: for stars
+#   - semi_major, semi_minor: for ellipses
+#   - thickness: [min, max] - for outlines and lines
+#
+# Rotation:
+#   - angle: [min, max] - rotation in radians (0 to 2π ≈ 6.28318)
+#
+# Integer parameters (can be fixed value or range):
+#   - n_arms: number of star arms
+#   - n_sides: number of polygon sides
+#   - n_controls: number of bezier control points
+#   - n_points: number of spline control points
+#
+# FINDING PARAMETER NAMES:
+# -------------------------
+# 1. Look at the shape's __init__() method in shapes/<shape_name>.py
+#    Example: shapes/star.py has __init__(center, outer_radius, inner_radius, ...)
+#
+# 2. Look at the shape's generate() method signature
+#    The parameters match what you put in the YAML
+#
+# 3. Check the shape's class definition to understand what each parameter does
+#
+# TIPS:
+# -----
+# 1. Start with count: 10 to test your config before generating large datasets
+#
+# 2. Use save_metadata: true while testing to see exact shape parameters
+#
+# 3. Keep centers away from edges using ranges like [0.1, 0.9]
+#
+# 4. For consistent visual appearance across different image sizes,
+#    scale your radius/thickness ranges proportionally
+#
+# 5. Layer shapes from background to foreground by ordering them in the
+#    shapes list - first shape renders first (behind), last shape on top
+#
+# 6. Use count: [0, N] for optional shapes that appear sometimes but not always
+#
+# 7. Fixed vs range for integers:
+#    n_arms: 5        → always 5 arms
+#    n_arms: [4, 7]   → randomly 4, 5, 6, or 7 arms
+#
+# =============================================================================
