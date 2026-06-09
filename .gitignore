@@ -4,6 +4,9 @@ data/RESULTS/*
 data/microscope_outputs/*
 !data/microscope_outputs/README.md
 dataset_output/
+data/BioSR
+data/LSDIR
+data/Synthetic
 
 # pyCharm
 .idea
