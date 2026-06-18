@@ -6,9 +6,9 @@ window_size: 8
 upscale: 2
 
 # Dataset, preprocessing and postprocessing
-dataset: data/DIV2K
+dataset: data/LSDIR
 batch_size: 16
-num_workers: 4
+num_workers: 8
 first_crop: 256
 second_crop: 64
 
