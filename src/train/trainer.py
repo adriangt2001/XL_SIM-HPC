@@ -1,20 +1,23 @@
+import datetime
 from collections.abc import Callable
 from pathlib import Path
 
 import torch
 import wandb
-from accelerate import Accelerator
-from accelerate.utils import ProjectConfiguration, tqdm
-from torchmetrics import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from accelerate import Accelerator, DistributedDataParallelKwargs
+from accelerate.utils import ProjectConfiguration, broadcast_object_list, tqdm
+from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 
-from src.simulation.sim_pipeline import SimulatorPipeline
-from src.utils.preprocessing import sr_random_crop_pil
+from src.simulation.microscope import Microscope
+from src.simulation.sim_pipeline import ImageNoiseModel, SimulatorPipeline
+from src.utils.preprocessing import sr_random_crop_tensor
 
 
 class Trainer:
     def __init__(
         self,
         model: torch.nn.Module,
+        preprocess_fn: Callable[[any], dict[str, torch.Tensor]],
         postprocess_fn: Callable[[any], torch.Tensor],
         loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
         model_name: str,
@@ -24,15 +27,26 @@ class Trainer:
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
         max_iters: int,
+        warmup_iters: int,
         valid_freq: int,
         save_freq: int,
         output_dir: str,
-        crop_size: int,
+        first_crop_size: int,
+        second_crop_size: int,
         upscale: int,
+        log_freq: int,
+        max_grad_norm: float,
         checkpoint: str | None = None,
     ):
+        ddp_kwargs = DistributedDataParallelKwargs(broadcast_buffers=False)
+
+        self.accelerator = Accelerator()
         self.model_name = model_name
-        self.output_dir = self.__generate_run_path(output_dir, model_name)
+        self.output_dir = [None]
+        if self.accelerator.is_main_process:
+            self.output_dir[0] = self.__generate_run_path(output_dir, model_name)
+        broadcast_object_list(self.output_dir, from_process=0)
+        self.output_dir = self.output_dir[0]
         self.run_name = f"{model_name}_{self.output_dir.name}"
 
         self.accelerator = Accelerator(
@@ -42,6 +56,8 @@ class Trainer:
                 total_limit=5,
             ),
             log_with="wandb",
+            kwargs_handlers=[ddp_kwargs],
+            step_scheduler_with_optimizer=False,
         )
         self.accelerator.init_trackers(
             project_name=self.model_name,
@@ -66,14 +82,27 @@ class Trainer:
         )
         self.accelerator.register_for_checkpointing(self.scheduler)
 
-        self.simulator = SimulatorPipeline(device=self.device)
         self.max_iters = max_iters
+        self.warmup_iters = warmup_iters
         self.valid_freq = valid_freq
         self.save_freq = save_freq
-        self.crop_size = crop_size
+        self.first_crop_size = first_crop_size
+        self.second_crop_size = second_crop_size
         self.upscale = upscale
+        self.preprocess_fn = preprocess_fn
         self.postprocess_fn = postprocess_fn
         self.loss_fn = loss_fn
+        self.log_freq = log_freq
+        self.max_grad_norm = max_grad_norm
+        microscope = Microscope(
+            resolution=(
+                self.first_crop_size // self.upscale,
+                self.first_crop_size // self.upscale,
+            ),
+            device=self.device,
+        )
+        noise = ImageNoiseModel(device=self.device)
+        self.simulator = SimulatorPipeline(microscope, noise, device=self.device)
         self.psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device=self.device)
         self.ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(
             device=self.device
@@ -83,44 +112,54 @@ class Trainer:
         if checkpoint is not None:
             self.checkpoint = Path(checkpoint)
 
-    def __generate_run_path(self, model_name, output_dir):
+    def __generate_run_path(self, output_dir, model_name):
         model_folder = Path(output_dir) / Path(model_name)
+        model_folder.mkdir(exist_ok=True)
 
-        num_runs = len(model_folder.iterdir())
-        run_folder = Path(f"run_{num_runs:03d}")
+        id_run = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_folder = Path(f"run_{id_run}")
 
         full_path = model_folder / run_folder
 
-        full_path.mkdir(exist_ok=True)
+        full_path.mkdir(parents=True, exist_ok=True)
 
         return full_path
 
     def train_step(self, batch: dict[str, torch.Tensor]):
-        self.model.train()
         self.optimizer.zero_grad(set_to_none=True)
 
-        pixel_values = batch["lr"]
-        target = batch["hr"]
+        targets = batch["hr"]
 
         with torch.no_grad():
-            pixel_values, _ = self.simulator(pixel_values)
+            pixel_values, _ = self.simulator(targets)
+            psf = self.simulator.microscope.psf_em
+            pixel_values, targets = sr_random_crop_tensor(
+                pixel_values,
+                targets,
+                self.second_crop_size,
+                self.second_crop_size * self.upscale,
+            )
 
-        pixel_values, target = sr_random_crop_pil(
-            pixel_values, target, self.crop_size, self.crop_size * self.upscale
-        )
+            preprocessed_batch = self.preprocess_fn(pixel_values=pixel_values, psf=psf)
 
         with self.accelerator.autocast():
-            outputs = self.model(pixel_values)
+            outputs = self.model(**preprocessed_batch)
             outputs = self.postprocess_fn(outputs)
-            loss = self.loss_fn(outputs, target)
+            loss = self.loss_fn(outputs, targets)
 
         self.accelerator.backward(loss)
+
+        self.accelerator.clip_grad_norm_(
+            self.model.parameters(), max_norm=self.max_grad_norm
+        )
+
+        lr = self.optimizer.param_groups[0]["lr"]
         self.optimizer.step()
 
         if self.scheduler is not None:
             self.scheduler.step()
 
-        return loss.item()
+        return loss, lr
 
     def train(self):
         step = 0
@@ -128,6 +167,7 @@ class Trainer:
         best_psnr = {"step": 0, "psnr": 0, "ssim": 0}
         best_ssim = {"step": 0, "psnr": 0, "ssim": 0}
         total_loss = 0
+        self.model.train()
 
         if self.checkpoint is not None:
             step, epoch, best_psnr, best_ssim = self.load_state()
@@ -142,7 +182,8 @@ class Trainer:
             if hasattr(self.train_loader.sampler, "set_epoch"):
                 self.train_loader.sampler.set_epoch(epoch)
             for train_data in self.train_loader:
-                loss = self.train_step(train_data)
+                loss, current_lr = self.train_step(train_data)
+                loss = self.accelerator.reduce(loss, reduction="mean").item()
                 total_loss += loss
                 step += 1
 
@@ -150,12 +191,22 @@ class Trainer:
                 pbar.set_postfix({"loss": loss})
 
                 if step % self.log_freq == 0:
-                    self.log_train(total_loss / self.log_freq)
+                    self.log_train(total_loss / self.log_freq, current_lr, step)
                     total_loss = 0
 
-                if step % self.valid_freq == 0:
-                    loss, metrics = self.valid_step(self.valid_loader)
-                    self.log_valid(loss, metrics)
+                if step > self.warmup_iters and step % self.valid_freq == 0:
+                    loss, metrics, predictions, pixel_values, targets = self.valid_step(
+                        self.valid_loader
+                    )
+                    self.log_valid(
+                        loss,
+                        metrics,
+                        predictions,
+                        pixel_values,
+                        targets,
+                        step,
+                        split="valid",
+                    )
 
                     if metrics["psnr"] > best_psnr["psnr"]:
                         best_psnr["step"] = step
@@ -176,32 +227,55 @@ class Trainer:
                     break
 
             epoch += 1
+        self.accelerator.end_training()
 
     @torch.no_grad()
     def valid_step(self, loader):
         self.model.eval()
-        metrics = {"psnr": 0, "ssim": 0}
+
+        self.psnr_fn.reset()
+        self.ssim_fn.reset()
+
         total_loss = 0
         count = 0
         for batch in tqdm(loader, desc="Valid progress", main_process_only=True):
-            pixel_values = batch["lr"]
             targets = batch["hr"]
 
-            pixel_values, _ = self.simulator(pixel_values)
-            outputs = self.model(pixel_values)
-            outputs = self.postprocess_fn(outputs)
-            loss = self.loss_fn(outputs, targets)
+            pixel_values, _ = self.simulator(targets)
+            pixel_values, targets = sr_random_crop_tensor(
+                pixel_values,
+                targets,
+                self.second_crop_size,
+                self.second_crop_size * self.upscale,
+            )
+
+            with self.accelerator.autocast():
+                outputs = self.model(pixel_values)
+                outputs = self.postprocess_fn(outputs)
+                loss = self.loss_fn(outputs, targets)
 
             total_loss += loss.item()
-            metrics["psnr"] += self.psnr_fn(outputs, targets)
-            metrics["ssim"] += self.ssim_fn(outputs, targets)
             count += 1
 
-        total_loss /= count
-        metrics["psnr"] /= count
-        metrics["ssim"] /= count
+            gathered_outputs, gathered_targets = self.accelerator.gather_for_metrics(
+                (outputs, targets)
+            )
+            self.psnr_fn.update(gathered_outputs, gathered_targets)
+            self.ssim_fn.update(gathered_outputs, gathered_targets)
 
-        return total_loss, metrics
+        local_avg_loss = torch.tensor(total_loss / count, device=self.device)
+        global_avg_loss = self.accelerator.reduce(
+            local_avg_loss, reduction="mean"
+        ).item()
+
+        metrics = {
+            "psnr": self.psnr_fn.compute().item(),
+            "ssim": self.ssim_fn.compute().item(),
+        }
+
+        self.model.train()
+
+        return global_avg_loss, metrics, outputs, pixel_values, targets
 
     def save_model(self, name: str):
         self.accelerator.save_model(self.model, self.output_dir / name)
@@ -228,13 +302,14 @@ class Trainer:
         self.accelerator.load_state(self.checkpoint.parts[:-1])
         ckpt = torch.load(self.checkpoint / Path("train_info.pt"))
         step = ckpt["step"]
+        epoch = ckpt["epoch"]
         best_psnr = ckpt["best_psnr"]
         best_ssim = ckpt["best_ssim"]
-        return step, best_psnr, best_ssim
+        return step, epoch, best_psnr, best_ssim
 
-    def log_train(self, loss: int, step: int):
+    def log_train(self, loss: int, lr: float, step: int):
         self.accelerator.log(
-            {"train/loss": loss},
+            {"train/loss": loss, "train/lr": lr},
             step=step,
         )
 
@@ -243,6 +318,7 @@ class Trainer:
         loss: int,
         metrics: dict[str, float],
         predictions: torch.Tensor,
+        inputs: torch.Tensor,
         targets: torch.Tensor,
         step: int,
         split: str = "valid",
@@ -258,13 +334,22 @@ class Trainer:
 
         if self.accelerator.is_main_process:
             pred_images = []
+            input_images = []
             target_images = []
-            for i, (pred, target) in enumerate(zip(predictions, targets)):
-                pred_images.append(wandb.Image(pred, caption=f"Sample {i}: Prediction"))
-                target_images.append(wandb.Image(target, caption=f"Sample {i}: Target"))
+            for i, (pred, inp, target) in enumerate(zip(predictions, inputs, targets)):
+                pred_images.append(
+                    wandb.Image(pred.clip(0, 1), caption=f"Sample {i}: Prediction")
+                )
+                input_images.append(
+                    wandb.Image(inp[12:13].clip(0, 1), caption=f"Sample {i}: Input[12]")
+                )
+                target_images.append(
+                    wandb.Image(target.clip(0, 1), caption=f"Sample {i}: Target")
+                )
             wandb.log(
                 {
                     f"{split}/predictions": pred_images,
+                    f"{split}/inputs": input_images,
                     f"{split}/targets": target_images,
                 },
                 step=step,

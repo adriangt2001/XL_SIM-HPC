@@ -8,42 +8,49 @@ from datasets import load_from_disk
 from torch.utils.data import DataLoader, DistributedSampler
 from torchvision.transforms.functional import to_tensor
 
-from src.utils.preprocessing import sr_random_crop_pil
+from src.utils.preprocessing import random_crop_pil, crop_pil
 
 
 def _prepare_lsdir(data_path: Path, args: Namespace):
-    dataset = load_from_disk(str(data_path / Path("data/train")))
+    dataset = load_from_disk(str(data_path / Path("data", args.split)))
 
-    splits = dataset.train_test_split(test_size=0.2, shuffle=False)
+    splits = dataset.train_test_split(test_size=args.test_size, shuffle=False)
     train_dataset = splits["train"]
     valid_dataset = splits["test"]
 
-    def transform(sample):
+    def transform_train(sample):
         hrs = []
-        lrs = []
 
         for idx in range(len(sample["hr"])):
-            lr, hr = sr_random_crop_pil(
-                sample[f"lr_x{args.upscale}"][idx],
-                sample["hr"][idx],
+            hr = sample["hr"][idx].convert('L')
+            hr = random_crop_pil(
+                hr,
                 args.first_crop,
-                args.first_crop * args.upscale,
             )
             hrs.append(hr)
-            lrs.append(lr)
 
         return {
-            "hr": [to_tensor(im) for im in hrs],
-            "lr": [to_tensor(im) for im in lrs],
+            "hr": [to_tensor(im) for im in hrs]
+        }
+    
+    def transform_test(sample):
+        hrs = []
+
+        for idx in range(len(sample["hr"])):
+            hr = sample["hr"][idx].convert('L')
+            hr = crop_pil(hr, args.first_crop)
+            hrs.append(hr)
+        
+        return {
+            "hr": [to_tensor(im) for im in hrs]
         }
 
-    train_dataset.set_transform(transform)
-    valid_dataset.set_transform(transform)
+    train_dataset.set_transform(transform_train)
+    valid_dataset.set_transform(transform_test)
 
     def my_collate_fn(batch):
         return {
             "hr": torch.stack([sample["hr"] for sample in batch]),
-            "lr": torch.stack([sample["lr"] for sample in batch]),
         }
 
     return train_dataset, valid_dataset, my_collate_fn

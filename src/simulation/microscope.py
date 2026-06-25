@@ -18,8 +18,7 @@ class Microscope:
     def __init__(
         self,
         pattern_case="multipoint",
-        device="cuda",
-        device_id=0,
+        device: str | torch.device="cuda",
         resolution=(512, 512),
         # cam_height = 512,
         # cam_width = 512,
@@ -42,7 +41,7 @@ class Microscope:
         noise_level_poisson=0.1,
     ):
         self.pattern_case = pattern_case
-        self.device = torch.device(device, device_id)
+        self.device = device
         self.cam_height = resolution[0]
         self.cam_width = resolution[1]
         self.cam_pix = cam_pix

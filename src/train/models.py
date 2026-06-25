@@ -1,24 +1,116 @@
-from configargparse import Namespace
-from transformers import Swin2SRConfig, Swin2SRForImageSuperResolution
 import torch
+import torch.nn.functional as F
+from configargparse import Namespace
+from safetensors.torch import load_model
+from skimage.restoration import richardson_lucy
+from transformers import Swin2SRConfig, Swin2SRForImageSuperResolution
+from transformers.modeling_outputs import ImageSuperResolutionOutput
+
+
+class RichardsonLucy(torch.nn.Module):
+    def __init__(
+        self,
+        upscale: int,
+        mode: str = "bilinear",
+        align_corners: bool = False,
+        antialias: bool = True,
+    ):
+        super().__init__()
+        self.upscale = upscale
+        self.mode = mode
+        self.align_corners = align_corners
+        self.antialias = antialias
+
+    def forward(self, pixel_values: torch.Tensor, psf: torch.Tensor):
+        device = pixel_values.device
+        img = torch.mean(pixel_values, dim=1)[:, None, ...]
+        img = F.interpolate(
+            img,
+            scale_factor=self.upscale,
+            mode=self.mode,
+            align_corners=self.align_corners,
+            antialias=self.antialias,
+        )
+        B, C, H, W = img.shape
+        psf = psf[None, None, ...].expand((B, C, -1, -1))
+        output = richardson_lucy(
+            img.detach().cpu().numpy(), psf.detach().cpu().numpy()
+        )
+        output = torch.from_numpy(output).to(device=device)
+        return output
+
+
+class GetMax(torch.nn.Module):
+    def __init__(
+        self,
+        upscale: int,
+        mode: str = "bilinear",
+        align_corners: bool = False,
+        antialias: bool = True,
+    ):
+        super().__init__()
+        self.upscale = upscale
+        self.mode = mode
+        self.align_corners = align_corners
+        self.antialias = antialias
+
+    def forward(self, pixel_values: torch.Tensor):
+        img = torch.max(pixel_values, dim=1).values[:, None, ...]
+        output = F.interpolate(
+            img,
+            scale_factor=self.upscale,
+            mode=self.mode,
+            align_corners=self.align_corners,
+            antialias=self.antialias,
+        )
+        return output
+
 
 def get_model(args: Namespace):
-    if args.model_name == "Swin2SR":
+    if "Swin2SR" == args.model_name:
+        cfg = Swin2SRConfig(
+            image_size=args.second_crop,
+            num_channels=args.in_num_channels,
+            num_channels_out=args.out_num_channels,
+            window_size=args.window_size,
+            upscale=args.upscale,
+        )
+        model = Swin2SRForImageSuperResolution(cfg)
+
         if args.checkpoint is not None:
-            model = Swin2SRForImageSuperResolution.from_pretrained(args.checkpoint)
-        else:
-            cfg = Swin2SRConfig(
-                image_size=args.second_crop,
-                num_channels=args.in_num_channels,
-                num_channels_out=args.out_num_channels,
-                window_size=args.window_size,
-                upscale=args.upscale,
-            )
-            model = Swin2SRForImageSuperResolution(cfg)
+            try:
+                load_model(model, f"{args.checkpoint}/model.safetensors")
+            except FileNotFoundError:
+                pass
+
+        def preprocess_fn(**kwargs):
+            return {"pixel_values": kwargs["pixel_values"]}
+
+        def postprocess_fn(output: ImageSuperResolutionOutput):
+            return output.reconstruction
+
+    elif "RL" == args.model_name:
+        model = RichardsonLucy(upscale=args.upscale)
+
+        def preprocess_fn(**kwargs):
+            return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
+
+        def postprocess_fn(output: torch.Tensor):
+            return output
+
+    elif "Max" == args.model_name:
+        model = GetMax(upscale=args.upscale)
+
+        def preprocess_fn(**kwargs):
+            return {"pixel_values": kwargs["pixel_values"]}
+
+        def postprocess_fn(output: torch.Tensor):
+            return output
+
     else:
         raise ValueError(f"Model {args.model_name} not implemented.")
 
-    return model
+    return model, preprocess_fn, postprocess_fn
 
 
 if "__main__" == __name__:
@@ -27,7 +119,7 @@ if "__main__" == __name__:
     args = parse_arguments(is_test=True)
 
     if 1 == args.test:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         model: Swin2SRForImageSuperResolution = get_model(args)
         model = model.to(device=device)
@@ -51,7 +143,9 @@ if "__main__" == __name__:
         model = accelerator.prepare(model)
 
         print(f"==== Loaded model in {accelerator.num_processes} GPU ====")
-        print(f"Model size in GPU {device}: {sum([p.numel() for p in model.parameters()])}")
+        print(
+            f"Model size in GPU {device}: {sum([p.numel() for p in model.parameters()])}"
+        )
         model.eval()
 
         with torch.no_grad():

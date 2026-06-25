@@ -10,9 +10,9 @@ from .microscope import Microscope
 
 class ImageNoiseModel:
     def __init__(
-        self, inpainting_noise: float = 0.8, gaussian_noise: float = 0.1, device:str = "cuda", device_id: int = 0
+        self, inpainting_noise: float = 0.8, gaussian_noise: float = 0.1, device: str | torch.device = "cuda"
     ):
-        self.device = torch.device(device, device_id)
+        self.device = device
         self.inpainting_noise = inpainting_noise
         self.gaussian_noise = gaussian_noise
 
@@ -28,13 +28,13 @@ class ImageNoiseModel:
 
 
 class SimulatorPipeline:
-    def __init__(self, noise: ImageNoiseModel = None, microscope: Microscope = None, device: str = "cuda", device_id: int = 0):
-        self.device = torch.device(device, device_id)
+    def __init__(self, microscope: Microscope = None, noise: ImageNoiseModel = None, device: str | torch.device = "cuda"):
+        self.device = device
         if microscope is None:
-            microscope = Microscope(device=device, device_id=device_id)
+            microscope = Microscope(device=self.device)
 
         if noise is None:
-            noise = ImageNoiseModel(device=device, device_id=device_id)
+            noise = ImageNoiseModel(device=self.device)
 
         self.noise = noise
         self.microscope = microscope
@@ -52,8 +52,6 @@ class SimulatorPipeline:
 
         # Microscope expects channel dimension (B x D x H x W)
         output, calibs = self.microscope(noisy_img)
-        output = output.detach().cpu()
-        calibs = calibs.detach().cpu()
         return output, calibs
 
     def change_microscope(self, microscope: Microscope) -> Self:
