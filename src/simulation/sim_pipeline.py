@@ -1,61 +1,63 @@
+import inspect
 from typing import Self
 
-import deepinv as dinv
 import torch
 
 from src.utils.datasets import get_data
 
 from .microscope import Microscope
+from .noise_model import ImageNoiseModel
 
 
-class ImageNoiseModel:
-    def __init__(
-        self, inpainting_noise: float = 0.8, gaussian_noise: float = 0.1, device: str | torch.device = "cuda"
-    ):
-        self.device = device
-        self.inpainting_noise = inpainting_noise
-        self.gaussian_noise = gaussian_noise
+class SimulatorPipeline(torch.nn.Module):
+    @classmethod
+    def from_file(cls, microscope_filename: str, noise_filename: str):
+        microscope = Microscope.from_file(microscope_filename)
+        noise = ImageNoiseModel.from_file(noise_filename)
+        return cls(microscope, noise)
 
-    def __call__(self, img: torch.Tensor):
-        physics = dinv.physics.Inpainting(
-            img.shape[-3:], self.inpainting_noise, device=self.device
+    @classmethod
+    def from_params(cls, **kwargs):
+        microscope = Microscope(
+            **{
+                k: v
+                for k, v in kwargs.items()
+                if k in inspect.signature(Microscope.__init__).parameters
+            }
         )
-        physics.noise_model = dinv.physics.GaussianNoise(self.gaussian_noise)
-        output_img = physics(img.to(device=self.device))
-        # physics2 = dinv.physics.PoissonNoise(0.1)
-        # output_img = physics2(output_img)
-        return output_img
+        noise = ImageNoiseModel(
+            **{
+                k: v
+                for k, v in kwargs.items()
+                if k in inspect.signature(ImageNoiseModel.__init__).parameters
+            }
+        )
+        return cls(microscope, noise)
 
+    def __init__(self, microscope: Microscope = None, noise: ImageNoiseModel = None):
+        super().__init__()
+        self.microscope = microscope if microscope is not None else Microscope()
+        self.noise = noise if noise is not None else ImageNoiseModel()
+        self.requires_grad_(requires_grad=False)
 
-class SimulatorPipeline:
-    def __init__(self, microscope: Microscope = None, noise: ImageNoiseModel = None, device: str | torch.device = "cuda"):
-        self.device = device
-        if microscope is None:
-            microscope = Microscope(device=self.device)
-
-        if noise is None:
-            noise = ImageNoiseModel(device=self.device)
-
-        self.noise = noise
-        self.microscope = microscope
-
-    def __call__(self, image: torch.Tensor):
+    @torch.no_grad()
+    def forward(self, image: torch.Tensor):
         # Expected shape: B x D x H x W
         assert image.ndim == 4
 
-        image = image.to(device=self.device)
-        
         # Dinv expects explicit channel dimension (B x C x H x W)
         noisy_img = torch.zeros_like(image, dtype=torch.float32)
         for depth_idx in range(image.shape[1]):
-            noisy_img[:, depth_idx:depth_idx + 1, ...] = self.noise(image[:, depth_idx:depth_idx + 1, ...])
+            noisy_img[:, depth_idx : depth_idx + 1, ...] = self.noise(
+                image[:, depth_idx : depth_idx + 1, ...]
+            )
 
         # Microscope expects channel dimension (B x D x H x W)
         output, calibs = self.microscope(noisy_img)
         return output, calibs
 
     def change_microscope(self, microscope: Microscope) -> Self:
-        return SimulatorPipeline(self.noise, microscope)
+        return SimulatorPipeline(microscope, self.noise)
 
 
 def main(args):

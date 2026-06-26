@@ -1,27 +1,35 @@
+import inspect
+
 import deepinv as dinv
 import numpy as np
 import torch
 import torch.nn.functional as F
-import inspect
+import yaml
+
 from .utils import calc_utils
 
 
-class Microscope:
+class Microscope(torch.nn.Module):
     ##### Physic Constants (Units) #####
 
     mm = 1e3
     um = 1
     nm = 1e-3
 
+    ##### Static loader #####
+    @classmethod
+    def from_file(cls, filename: str):
+        with open(filename, mode="r") as f:
+            config = yaml.safe_load(f)
+        return cls(**config)
+
     ##### Input Params (Input)
 
     def __init__(
         self,
         pattern_case="multipoint",
-        device: str | torch.device="cuda",
-        resolution=(512, 512),
-        # cam_height = 512,
-        # cam_width = 512,
+        cam_height=512,
+        cam_width=512,
         cam_pix=6.5,
         binn_simu=2,
         single_plane=True,
@@ -40,10 +48,10 @@ class Microscope:
         noise_level_gaussian=0.1,
         noise_level_poisson=0.1,
     ):
+        super().__init__()
         self.pattern_case = pattern_case
-        self.device = device
-        self.cam_height = resolution[0]
-        self.cam_width = resolution[1]
+        self.cam_height = cam_height
+        self.cam_width = cam_width
         self.cam_pix = cam_pix
         self.binn_simu = binn_simu
         self.single_plane = single_plane
@@ -62,14 +70,16 @@ class Microscope:
         self.noise_level_gaussian = noise_level_gaussian
         self.noise_level_poisson = noise_level_poisson
 
-        self._periodicity, self._increment = None, None
-        self.psf_ex, self.psf_em = None, None
-        self._calib_pattern, self._num_steps = None, None
-
         ##### Expensive Variables (Main Variables)
         self._periodicity, self._increment = self.compute_periodicity()
-        self.psf_ex, self.psf_em = self.generate_psf()
-        self._calib_pattern, self._num_steps = self.generate_pattern()
+        psf_ex, psf_em = self.generate_psf()
+        self.register_buffer("psf_ex", psf_ex, persistent=False)
+        self.register_buffer("psf_em", psf_em, persistent=False)
+
+        calib_pattern, self._num_steps = self.generate_pattern()
+        self.register_buffer("_calib_pattern", calib_pattern, persistent=False)
+
+        self.requires_grad_(requires_grad=False)
 
         print("Microscope ready!")
 
@@ -229,7 +239,6 @@ class Microscope:
             self._pix_size_simu_axi * 1e-6,
             self._wavelength_ex * 1e-6,
             self.na,
-            self.device,
         )
         psf_ex_ifft = torch.fft.ifftshift(
             torch.fft.ifftn(torch.sqrt(psf_ex_ft), dim=(-2, -1)), dim=(-2, -1)
@@ -243,7 +252,6 @@ class Microscope:
             self._pix_size_simu_axi * 1e-6,
             self._wavelength_em * 1e-6,
             self.na,
-            self.device,
         )
         return psf_ex_ifft, psf_em_ft
 
@@ -257,23 +265,20 @@ class Microscope:
                 n_steps=self._num_scan_steps,
                 phase_optim=self.phase_optim,
                 n_aods=self._num_aods,
-                device=self.device,
                 iterations=150,  # Hardcoded
             )
         )
         holos_x = holos_x
         holos_y = holos_y
-        holo = torch.outer(holos_y[0], holos_x[0]).to(device=self.device)
-        n_steps = torch.tensor([n_steps_x, n_steps_y], device=self.device)
+        holo = torch.outer(holos_y[0], holos_x[0])
+        n_steps = torch.tensor([n_steps_x, n_steps_y])
 
         roll_step = 16 if self.aod_propag == 1 else self._cam_size_simu[0]
         num_rolls = self._cam_size_simu[0] // roll_step
         roll_direction = (1, 1) if self._num_aods == 2 else (1, 0)
 
         calib_pattern = torch.zeros(
-            (self._num_slices, *self._cam_size_simu),
-            dtype=torch.float32,
-            device=self.device,
+            (self._num_slices, *self._cam_size_simu), dtype=torch.float32
         )
 
         for r in range(num_rolls):
@@ -294,6 +299,7 @@ class Microscope:
         return calib_pattern, n_steps
 
     def noisy_reading(self, img: torch.Tensor) -> torch.Tensor:
+        device = img.device
         large_img = F.interpolate(
             img,
             size=(self._cam_size_simu[0], self._cam_size_simu[1]),
@@ -305,7 +311,7 @@ class Microscope:
             large_img.shape[1:],
             filter="bicubic",
             factor=self.upsampling_factor,
-            device=self.device,
+            device=device,
         )
         physics_upsampling_gaussian.set_noise_model(
             dinv.physics.GaussianNoise(self.noise_level_gaussian)
@@ -313,7 +319,7 @@ class Microscope:
         defocused_img = physics_upsampling_gaussian(large_img)
 
         physics_inpainting_poisson = dinv.physics.Inpainting(
-            defocused_img.shape[1:], mask=self.inpainting_mask, device=self.device
+            defocused_img.shape[1:], mask=self.inpainting_mask, device=device
         )
         physics_inpainting_poisson.set_noise_model(
             dinv.physics.PoissonNoise(self.noise_level_poisson, clip_positive=True)
@@ -324,6 +330,7 @@ class Microscope:
 
     def process_img(self, img: torch.Tensor):
         img = self._check_input(img)
+        device = img.device
         B, D, H, W = img.shape
 
         noisy_img = self.noisy_reading(img)
@@ -349,7 +356,7 @@ class Microscope:
                         self._cam_size_simu[0] + 2 * pad_h,
                         self._cam_size_simu[1] + 2 * pad_w,
                     ],
-                    device=self.device,
+                    device=device,
                 )
 
                 for k in nonzero_slices:
@@ -374,17 +381,19 @@ class Microscope:
                         calibs.append(calib_k)
 
                 em_crop = em[..., pad_h:-pad_h, pad_w:-pad_w]
-                donwsampling_physics = dinv.physics.DownsamplingMatlab(self.binn_simu)
+                donwsampling_physics = dinv.physics.DownsamplingMatlab(
+                    self.binn_simu
+                ).to(device=device)
                 downsampled_output = donwsampling_physics(em_crop)
                 output_stack.append(downsampled_output)
 
-        output_stack = torch.stack(output_stack, dim=1).to(device=self.device)
+        output_stack = torch.stack(output_stack, dim=1)
         output_stack /= torch.max(output_stack)
-        calibs = torch.stack(calibs).to(device=self.device)
+        calibs = torch.stack(calibs)
         calibs /= torch.max(calibs)
         return output_stack, calibs
 
-    def __call__(self, img: torch.Tensor):
+    def forward(self, img: torch.Tensor):
         return self.process_img(img)
 
 

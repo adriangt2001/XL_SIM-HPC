@@ -2,7 +2,6 @@ import time
 from typing import Any, Literal
 
 import napari
-import numpy as np
 import torch
 from magicclass.widgets import CollapsibleContainer
 from magicgui import magicgui
@@ -39,16 +38,17 @@ def make_basic_settings():
 def make_camera_settings():
     @magicgui(
         call_button=False,
-        # resolution={"min": 1, "max": 1000},
         # image_size={"min": 64, "max": 2048},
-        resolution={"label": "Resolution"},
+        cam_height={"label": "Cam height"},
+        cam_width={"label": "Cam width"},
         focal={"label": "Focal", "min": 0},
         magnification={"label": "Magnification", "min": 0},
         axial_fov={"label": "Axial FOV", "min": 0},
         numerical_aperture={"label": "Numerical Aperture", "min": 0},
     )
     def camera_settings(
-        resolution: tuple[int, int] = (512, 512),
+        cam_height: int = 512,
+        cam_width: int = 512,
         focal: int = 200,
         magnification: float = 60,
         axial_fov: float = 30,
@@ -216,14 +216,12 @@ def make_widget(viewer: napari.Viewer, state: Any):
 
         for layer in selected_layers:
             print(f"Input image shape: {layer.data.shape}")
-            img = torch.from_numpy(layer.data)
+            img = torch.from_numpy(layer.data).to(device=state.device)
             generated, calibs = state.simulation_pipeline(img)
-            generated = generated.numpy()
-            state.last_calib = calibs.numpy()
+            generated = generated.cpu().numpy()
+            state.last_calib = calibs.cpu().numpy()
             print(f"Output image shape: {generated.shape}")
-            viewer.add_image(
-                generated, name="(generated)" + layer.name
-            )
+            viewer.add_image(generated, name="(generated)" + layer.name)
 
     run_generation_btn = PushButton(text="Run Simulation Pipeline")
     run_generation_btn.clicked.connect(run_generation_clicked)

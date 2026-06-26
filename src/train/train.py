@@ -42,6 +42,8 @@ def main(args: Namespace):
         valid_loader,
         optimizer,
         scheduler,
+        args.microscope_config,
+        args.noise_config,
         args.num_iterations,
         args.warmup_iterations,
         args.valid_freq,

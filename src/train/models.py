@@ -3,7 +3,6 @@ import torch.nn.functional as F
 from configargparse import Namespace
 from safetensors.torch import load_file, load_model  # , save_model
 from skimage.restoration import richardson_lucy
-from torchvision.transforms.functional import equalize
 from transformers import Swin2SRConfig, Swin2SRForImageSuperResolution
 from transformers.modeling_outputs import ImageSuperResolutionOutput
 
@@ -24,7 +23,7 @@ class RichardsonLucy(torch.nn.Module):
 
     def forward(self, pixel_values: torch.Tensor, psf: torch.Tensor):
         device = pixel_values.device
-        img = torch.mean(pixel_values, dim=1)[:, None, ...]
+        img = torch.max(pixel_values, dim=1).values[:, None, ...]
         img = F.interpolate(
             img,
             scale_factor=self.upscale,
@@ -116,9 +115,10 @@ def get_model(args: Namespace):
             return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
 
         def postprocess_fn(output: torch.Tensor):
-            dtype = output.dtype
-            output = equalize((output * 255).to(dtype=torch.uint8))
-            return output.to(dtype=dtype) / 255
+            return output
+            # dtype = output.dtype
+            # output = equalize((output * 255).to(dtype=torch.uint8))
+            # return output.to(dtype=dtype) / 255
 
     elif "Max" == args.model_name:
         model = GetMax(upscale=args.upscale)

@@ -60,7 +60,7 @@ def richardson_x1(image: torch.Tensor, state):
     psf = state.simulation_pipeline.microscope.psf_em[0][None, None, ...]
     
     kwargs = {
-        "psf": F.interpolate(psf, scale_factor=image.shape[2]/psf.shape[2], mode="bilinear", align_corners=False, antialias=True).detach().cpu().numpy()[0, ...]
+        "psf": F.interpolate(psf, scale_factor=image.shape[2]/psf.shape[2], mode="bicubic", align_corners=False, antialias=True).detach().cpu().numpy()[0, ...]
     }
     print(f"PSF shape: {kwargs['psf'].shape}")
 
@@ -79,7 +79,7 @@ def richardson_x2(image: torch.Tensor, state):
     img = torch.mean(image, axis=1)
     img = img[:, None, ...]
     img = F.interpolate(
-        img, scale_factor=2, mode="bilinear", align_corners=False, antialias=True
+        img, scale_factor=2, mode="bicubic", align_corners=False, antialias=True
     )[:, 0, ...]
     output = richardson_lucy(img.detach().cpu().numpy(), **kwargs)[:, None, ...]
     output = torch.from_numpy(output)

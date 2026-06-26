@@ -125,6 +125,20 @@ def parse_arguments(is_test: bool = False) -> Namespace:
         help="Iterations between image logs",
     )
 
+    # Simulator
+    parser.add_argument(
+        "--microscope_config",
+        type=str,
+        default="configs/simulator/default_microscope.yaml",
+        help="Path to the microscope configuration",
+    )
+    parser.add_argument(
+        "--noise_config",
+        type=str,
+        default="configs/simulator/default_noise.yaml",
+        help="Path to the noise configuration",
+    )
+
     args = parser.parse_args()
 
     return args

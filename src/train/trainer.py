@@ -10,8 +10,7 @@ from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMe
 from torchvision.utils import make_grid
 
 import wandb
-from src.simulation.microscope import Microscope
-from src.simulation.sim_pipeline import ImageNoiseModel, SimulatorPipeline
+from src.simulation.sim_pipeline import SimulatorPipeline
 from src.utils.preprocessing import sr_random_crop_tensor
 
 
@@ -28,6 +27,8 @@ class Trainer:
         test_loader: torch.utils.data.DataLoader,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
+        microscope_filename: str,
+        noise_filename: str,
         max_iters: int,
         warmup_iters: int,
         valid_freq: int,
@@ -98,15 +99,9 @@ class Trainer:
         self.log_freq = log_freq
         self.image_log_freq = image_log_freq
         self.max_grad_norm = max_grad_norm
-        microscope = Microscope(
-            resolution=(
-                self.first_crop_size // self.upscale,
-                self.first_crop_size // self.upscale,
-            ),
-            device=self.device,
-        )
-        noise = ImageNoiseModel(device=self.device)
-        self.simulator = SimulatorPipeline(microscope, noise, device=self.device)
+        self.simulator = SimulatorPipeline.from_file(
+            microscope_filename, noise_filename
+        ).to(device=self.device)
         self.psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device=self.device)
         self.ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(
             device=self.device

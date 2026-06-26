@@ -7,14 +7,13 @@ from .MicroscPSF import microscPSF
 def phase_optim_AOD_fast(
     image_in: torch.Tensor,
     laser_profile: torch.Tensor,
-    num_iters: int,
-    device: torch.device | str,
+    num_iters: int
 ):
-    desired_pattern = torch.sqrt(image_in).to(device=device)
-    laser_profile = torch.sqrt(laser_profile).to(device=device)
+    desired_pattern = torch.sqrt(image_in)
+    laser_profile = torch.sqrt(laser_profile)
 
     phase_ini = torch.hann_window(image_in.shape[1], periodic=False) * 2 * torch.pi
-    phase_ini = phase_ini.unsqueeze(0).expand(image_in.shape[0], -1).to(device=device)
+    phase_ini = phase_ini.unsqueeze(0).expand(image_in.shape[0], -1)
 
     A = torch.fft.ifftshift(
         torch.fft.ifft(
@@ -76,7 +75,7 @@ def shift_fourier2D(im: torch.Tensor, delta: tuple, pad=512):
     return result
 
 
-def generate_psf(num_slices, H, W, pix_size_lat, pix_size_axi, wavelength, NA, device):
+def generate_psf(num_slices, H, W, pix_size_lat, pix_size_axi, wavelength, NA,):
     H_psf, W_psf = H // 16, W // 16
 
     psf = microscPSF(
@@ -87,7 +86,7 @@ def generate_psf(num_slices, H, W, pix_size_lat, pix_size_axi, wavelength, NA, d
         wavelength=wavelength,
         res_lateral=pix_size_lat,
         res_axial=pix_size_axi,
-    ).to(dtype=torch.float32, device=device)
+    ).to(dtype=torch.float32)
     psf = torch.abs(psf) ** 2
     psf /= torch.max(psf)
 
@@ -149,7 +148,6 @@ def create_holograms(
     n_steps,
     phase_optim,
     n_aods,
-    device,
     iterations=300,
 ):
     intensity_x, intensity_y, n_steps_x, n_steps_y = foundation_pattern(
@@ -165,7 +163,7 @@ def create_holograms(
         # Still calculate holos_y
         if phase_optim == 1:
             laser_int_y = torch.ones_like(intensity_y)
-            holos_y = phase_optim_AOD_fast(intensity_y, laser_int_y, iterations, device)
+            holos_y = phase_optim_AOD_fast(intensity_y, laser_int_y, iterations)
         else:
             holos_y = torch.fft.fftshift(
                 torch.fft.ifft(
@@ -177,8 +175,8 @@ def create_holograms(
         if phase_optim == 1:
             laser_int_x = gaussian_at_1e2(W_pix)
             laser_int_y = gaussian_at_1e2(H_pix)
-            holos_x = phase_optim_AOD_fast(intensity_x, laser_int_x, iterations, device)
-            holos_y = phase_optim_AOD_fast(intensity_y, laser_int_y, iterations, device)
+            holos_x = phase_optim_AOD_fast(intensity_x, laser_int_x, iterations)
+            holos_y = phase_optim_AOD_fast(intensity_y, laser_int_y, iterations)
         else:
             holos_x = torch.fft.fftshift(
                 torch.fft.ifft(
