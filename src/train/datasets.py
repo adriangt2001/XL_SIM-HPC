@@ -8,7 +8,7 @@ from datasets import load_from_disk
 from torch.utils.data import DataLoader, DistributedSampler
 from torchvision.transforms.functional import to_tensor
 
-from src.utils.preprocessing import random_crop_pil, crop_pil
+from src.utils.preprocessing import crop_pil
 
 
 def _prepare_lsdir(data_path: Path, args: Namespace):
@@ -22,28 +22,21 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
         hrs = []
 
         for idx in range(len(sample["hr"])):
-            hr = sample["hr"][idx].convert('L')
-            hr = random_crop_pil(
-                hr,
-                args.first_crop,
-            )
+            hr = sample["hr"][idx].convert("L")
+            hr = crop_pil(hr, args.first_crop, random=True)
             hrs.append(hr)
 
-        return {
-            "hr": [to_tensor(im) for im in hrs]
-        }
-    
+        return {"hr": [to_tensor(im) for im in hrs]}
+
     def transform_test(sample):
         hrs = []
 
         for idx in range(len(sample["hr"])):
-            hr = sample["hr"][idx].convert('L')
-            hr = crop_pil(hr, args.first_crop)
+            hr = sample["hr"][idx].convert("L")
+            hr = crop_pil(hr, args.first_crop, random=False)
             hrs.append(hr)
-        
-        return {
-            "hr": [to_tensor(im) for im in hrs]
-        }
+
+        return {"hr": [to_tensor(im) for im in hrs]}
 
     train_dataset.set_transform(transform_train)
     valid_dataset.set_transform(transform_test)
