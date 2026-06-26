@@ -229,7 +229,7 @@ class Trainer:
             epoch += 1
         self.accelerator.end_training()
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def valid_step(self, loader):
         self.model.eval()
 

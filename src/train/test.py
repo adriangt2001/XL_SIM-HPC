@@ -49,7 +49,7 @@ def main(args: Namespace):
 
     logged_batch = False
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for batch in tqdm(test_loader, desc="Test progress"):
             targets = batch["hr"].to(device=device)
 
