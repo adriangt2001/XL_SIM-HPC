@@ -3,11 +3,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 import torch
-import wandb
+import torch.nn.functional as F
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.utils import ProjectConfiguration, broadcast_object_list, tqdm
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
+from torchvision.utils import make_grid
 
+import wandb
 from src.simulation.microscope import Microscope
 from src.simulation.sim_pipeline import ImageNoiseModel, SimulatorPipeline
 from src.utils.preprocessing import sr_random_crop_tensor
@@ -35,6 +37,7 @@ class Trainer:
         second_crop_size: int,
         upscale: int,
         log_freq: int,
+        image_log_freq: int,
         max_grad_norm: float,
         checkpoint: str | None = None,
     ):
@@ -60,7 +63,7 @@ class Trainer:
             step_scheduler_with_optimizer=False,
         )
         self.accelerator.init_trackers(
-            project_name=self.model_name,
+            project_name="XL-SIM",
             init_kwargs={
                 "wandb": {
                     "name": self.run_name,
@@ -93,6 +96,7 @@ class Trainer:
         self.postprocess_fn = postprocess_fn
         self.loss_fn = loss_fn
         self.log_freq = log_freq
+        self.image_log_freq = image_log_freq
         self.max_grad_norm = max_grad_norm
         microscope = Microscope(
             resolution=(
@@ -131,8 +135,7 @@ class Trainer:
         targets = batch["hr"]
 
         with torch.no_grad():
-            pixel_values, _ = self.simulator(targets)
-            psf = self.simulator.microscope.psf_em
+            pixel_values, calibs = self.simulator(targets)
             pixel_values, targets = sr_random_crop_tensor(
                 pixel_values,
                 targets,
@@ -140,7 +143,9 @@ class Trainer:
                 self.second_crop_size * self.upscale,
             )
 
-            preprocessed_batch = self.preprocess_fn(pixel_values=pixel_values, psf=psf)
+            preprocessed_batch = self.preprocess_fn(
+                pixel_values=pixel_values, calibs=calibs
+            )
 
         with self.accelerator.autocast():
             outputs = self.model(**preprocessed_batch)
@@ -194,7 +199,7 @@ class Trainer:
                     self.log_train(total_loss / self.log_freq, current_lr, step)
                     total_loss = 0
 
-                if step > self.warmup_iters and step % self.valid_freq == 0:
+                if step >= self.warmup_iters and step % self.valid_freq == 0:
                     loss, metrics, predictions, pixel_values, targets = self.valid_step(
                         self.valid_loader
                     )
@@ -241,16 +246,19 @@ class Trainer:
         for batch in tqdm(loader, desc="Valid progress", main_process_only=True):
             targets = batch["hr"]
 
-            pixel_values, _ = self.simulator(targets)
-            pixel_values, targets = sr_random_crop_tensor(
-                pixel_values,
-                targets,
-                self.second_crop_size,
-                self.second_crop_size * self.upscale,
+            pixel_values, calibs = self.simulator(targets)
+            pixel_values = pixel_values[
+                ..., : self.second_crop_size, : self.second_crop_size
+            ]
+            targets = targets[
+                ..., : self.second_crop_size * 2, : self.second_crop_size * 2
+            ]
+            preprocessed_batch = self.preprocess_fn(
+                pixel_values=pixel_values, calibs=calibs
             )
 
             with self.accelerator.autocast():
-                outputs = self.model(pixel_values)
+                outputs = self.model(**preprocessed_batch)
                 outputs = self.postprocess_fn(outputs)
                 loss = self.loss_fn(outputs, targets)
 
@@ -332,26 +340,29 @@ class Trainer:
             step=step,
         )
 
-        if self.accelerator.is_main_process:
-            pred_images = []
-            input_images = []
-            target_images = []
+        if self.accelerator.is_main_process and step % self.image_log_freq == 0:
+            images = []
             for i, (pred, inp, target) in enumerate(zip(predictions, inputs, targets)):
-                pred_images.append(
-                    wandb.Image(pred.clip(0, 1), caption=f"Sample {i}: Prediction")
+                if i > 4:
+                    break
+                image = make_grid(
+                    [
+                        target,
+                        pred,
+                        F.interpolate(
+                            inp[None, 12:13], scale_factor=args.upscale, mode="nearest"
+                        )[0],
+                    ],
+                    nrow=2,
                 )
-                input_images.append(
-                    wandb.Image(inp[12:13].clip(0, 1), caption=f"Sample {i}: Input[12]")
-                )
-                target_images.append(
-                    wandb.Image(target.clip(0, 1), caption=f"Sample {i}: Target")
+                images.append(
+                    wandb.Image(
+                        image.clip(0, 1),
+                        caption=f"Sample {i}:\n Top left: Target | Top right: Prediction\n Bottom left: Input C12",
+                    )
                 )
             wandb.log(
-                {
-                    f"{split}/predictions": pred_images,
-                    f"{split}/inputs": input_images,
-                    f"{split}/targets": target_images,
-                },
+                {f"{split}/images": images},
                 step=step,
             )
 

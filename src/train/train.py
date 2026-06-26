@@ -1,17 +1,17 @@
+import torch
 from configargparse import Namespace
 from torch.nn.functional import l1_loss
 from torch.optim import Adam
-from torch.optim.lr_scheduler import MultiStepLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import LinearLR, MultiStepLR, SequentialLR
 
 from .datasets import prepare_data
 from .models import get_model
 from .parser import parse_arguments
 from .trainer import Trainer
-import torch
 
 
 def main(args: Namespace):
-    model, postprocess_fn = get_model(args)
+    model, preprocess_fn, postprocess_fn = get_model(args)
     model = model.to(memory_format=torch.channels_last)
     train_loader, valid_loader = prepare_data(args)
     optimizer = Adam(model.parameters(), args.lr, betas=(0.9, 0.99))
@@ -33,6 +33,7 @@ def main(args: Namespace):
 
     trainer = Trainer(
         model,
+        preprocess_fn,
         postprocess_fn,
         l1_loss,
         args.model_name,
@@ -50,6 +51,7 @@ def main(args: Namespace):
         args.second_crop,
         args.upscale,
         args.report_scalar_freq,
+        args.report_image_freq,
         args.max_grad_norm,
         checkpoint=args.checkpoint,
     )

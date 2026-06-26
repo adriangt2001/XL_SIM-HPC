@@ -1,8 +1,9 @@
 import torch
 import torch.nn.functional as F
 from configargparse import Namespace
-from safetensors.torch import load_model
+from safetensors.torch import load_file, load_model  # , save_model
 from skimage.restoration import richardson_lucy
+from torchvision.transforms.functional import equalize
 from transformers import Swin2SRConfig, Swin2SRForImageSuperResolution
 from transformers.modeling_outputs import ImageSuperResolutionOutput
 
@@ -33,10 +34,13 @@ class RichardsonLucy(torch.nn.Module):
         )
         B, C, H, W = img.shape
         psf = psf[None, None, ...].expand((B, C, -1, -1))
-        output = richardson_lucy(
-            img.detach().cpu().numpy(), psf.detach().cpu().numpy()
-        )
-        output = torch.from_numpy(output).to(device=device)
+        output = []
+        for idx in range(len(img)):
+            pred = richardson_lucy(
+                img[idx].detach().cpu().numpy(), psf[idx].detach().cpu().numpy()
+            )
+            output.append(torch.from_numpy(pred))
+        output = torch.stack(output).to(device=device)
         return output
 
 
@@ -66,6 +70,25 @@ class GetMax(torch.nn.Module):
         return output
 
 
+def __load_model(model: torch.nn.Module, checkpoint_path: str):
+    try:
+        load_model(model, checkpoint_path)
+    except RuntimeError:
+        state_dict = load_file(checkpoint_path)
+        clean_state_dict = {}
+        for key, value in state_dict.items():
+            if key.startswith("_orig_mod."):
+                clean_key = key.replace("_orig_mod.", "", 1)
+            else:
+                clean_key = key
+            clean_state_dict[clean_key] = value
+        model.load_state_dict(clean_state_dict)
+        # save_model(model, checkpoint_path)
+    except FileNotFoundError:
+        print(f"Could not find file {checkpoint_path}. Aborting model loading.")
+    return model
+
+
 def get_model(args: Namespace):
     if "Swin2SR" == args.model_name:
         cfg = Swin2SRConfig(
@@ -78,10 +101,7 @@ def get_model(args: Namespace):
         model = Swin2SRForImageSuperResolution(cfg)
 
         if args.checkpoint is not None:
-            try:
-                load_model(model, f"{args.checkpoint}/model.safetensors")
-            except FileNotFoundError:
-                pass
+            model = __load_model(model, f"{args.checkpoint}/model.safetensors")
 
         def preprocess_fn(**kwargs):
             return {"pixel_values": kwargs["pixel_values"]}
@@ -96,7 +116,9 @@ def get_model(args: Namespace):
             return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
 
         def postprocess_fn(output: torch.Tensor):
-            return output
+            dtype = output.dtype
+            output = equalize((output * 255).to(dtype=torch.uint8))
+            return output.to(dtype=dtype) / 255
 
     elif "Max" == args.model_name:
         model = GetMax(upscale=args.upscale)
