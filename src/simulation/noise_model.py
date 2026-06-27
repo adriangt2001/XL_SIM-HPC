@@ -12,7 +12,7 @@ class ImageNoiseModel(torch.nn.Module):
 
     def __init__(
         self,
-        inpainting_noise: float = 0.8,
+        inpainting_noise: float = 0.2,
         gaussian_noise: float = 0.1,
     ):
         super().__init__()
@@ -22,7 +22,7 @@ class ImageNoiseModel(torch.nn.Module):
 
     def forward(self, img: torch.Tensor):
         physics = dinv.physics.Inpainting(
-            img.shape[-3:], self.inpainting_noise, device=img.device
+            img.shape[-3:], 1.0 - self.inpainting_noise, device=img.device
         )
         physics.noise_model = dinv.physics.GaussianNoise(self.gaussian_noise)
         output_img = physics(img.to(device=img.device))

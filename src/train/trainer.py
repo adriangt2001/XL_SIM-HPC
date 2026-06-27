@@ -11,7 +11,7 @@ from torchvision.utils import make_grid
 
 import wandb
 from src.simulation.sim_pipeline import SimulatorPipeline
-from src.utils.preprocessing import sr_random_crop_tensor
+from src.utils.preprocessing import crop_tensor
 
 
 class Trainer:
@@ -128,14 +128,17 @@ class Trainer:
         self.optimizer.zero_grad(set_to_none=True)
 
         targets = batch["hr"]
+        target_padding = batch["padding"]
 
         with torch.no_grad():
             pixel_values, calibs = self.simulator(targets)
-            pixel_values, targets = sr_random_crop_tensor(
+            pixel_values, targets, _ = crop_tensor(
                 pixel_values,
-                targets,
                 self.second_crop_size,
-                self.second_crop_size * self.upscale,
+                pair_image=targets,
+                pair_scale_factor=self.upscale,
+                offset=target_padding.max() // (2 * self.upscale),
+                random=True,
             )
 
             preprocessed_batch = self.preprocess_fn(
@@ -229,8 +232,8 @@ class Trainer:
             epoch += 1
         self.accelerator.end_training()
 
-    @torch.inference_mode()
-    def valid_step(self, loader):
+    @torch.no_grad()
+    def valid_step(self, loader: torch.utils.data.DataLoader):
         self.model.eval()
 
         self.psnr_fn.reset()
@@ -240,14 +243,17 @@ class Trainer:
         count = 0
         for batch in tqdm(loader, desc="Valid progress", main_process_only=True):
             targets = batch["hr"]
+            target_padding = batch["padding"]
 
             pixel_values, calibs = self.simulator(targets)
-            pixel_values = pixel_values[
-                ..., : self.second_crop_size, : self.second_crop_size
-            ]
-            targets = targets[
-                ..., : self.second_crop_size * 2, : self.second_crop_size * 2
-            ]
+            pixel_values, targets, _ = crop_tensor(
+                pixel_values,
+                self.second_crop_size,
+                pair_image=targets,
+                pair_scale_factor=self.upscale,
+                offset=target_padding.max() // (2 * self.upscale),
+                random=False,
+            )
             preprocessed_batch = self.preprocess_fn(
                 pixel_values=pixel_values, calibs=calibs
             )
@@ -345,7 +351,7 @@ class Trainer:
                         target,
                         pred,
                         F.interpolate(
-                            inp[None, 12:13], scale_factor=args.upscale, mode="nearest"
+                            inp[None, 12:13], scale_factor=self.upscale, mode="nearest"
                         )[0],
                     ],
                     nrow=2,

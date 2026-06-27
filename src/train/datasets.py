@@ -20,23 +20,27 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
 
     def transform_train(sample):
         hrs = []
+        padding = []
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx].convert("L")
-            hr = crop_pil(hr, args.first_crop, random=True)
-            hrs.append(hr)
+            hr, _, pad = crop_pil(hr, args.first_crop, random=True)
+            hrs.append(to_tensor(hr))
+            padding.append(torch.as_tensor(pad))
 
-        return {"hr": [to_tensor(im) for im in hrs]}
+        return {"hr": hrs, "padding": padding}
 
     def transform_test(sample):
         hrs = []
+        padding = []
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx].convert("L")
-            hr = crop_pil(hr, args.first_crop, random=False)
-            hrs.append(hr)
+            hr, _, pad = crop_pil(hr, args.first_crop, random=False)
+            hrs.append(to_tensor(hr))
+            padding.append(torch.as_tensor(pad))
 
-        return {"hr": [to_tensor(im) for im in hrs]}
+        return {"hr": hrs, "padding": padding}
 
     train_dataset.set_transform(transform_train)
     valid_dataset.set_transform(transform_test)
@@ -44,6 +48,7 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
     def my_collate_fn(batch):
         return {
             "hr": torch.stack([sample["hr"] for sample in batch]),
+            "padding": torch.stack([sample["padding"] for sample in batch])
         }
 
     return train_dataset, valid_dataset, my_collate_fn
