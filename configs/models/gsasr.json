@@ -1,0 +1,38 @@
+{
+    "encoder_kwargs": {
+        "in_chans": 25,
+        "img_size": 48,
+        "window_size": 8,
+        "img_range": 1.0,
+        "depths": [6, 6, 6, 6, 6, 6],
+        "embed_dim": 180,
+        "num_heads": [6, 6, 6, 6, 6, 6],
+        "mlp_ratio": 2,
+        "upsampler": "pixelshuffle",
+        "resi_connection": "1conv"
+   },
+   "decoder_kwargs": {
+        "inchannel": 64,
+        "outchannel": 1,
+        "channel": 180,
+        "num_heads": 6,
+        "num_crossattn_blocks": 1,
+        "num_crossattn_layers": 2,
+        "num_selfattn_blocks": 6,
+        "num_selfattn_layers": 6,
+        "num_gs_seed": 144,
+        "gs_up_factor": 1.0,
+        "window_size": 12,
+        "img_range": 1.0,
+        "shuffle_scale1": 2,
+        "shuffle_scale2": 2
+   },
+   "rasterization_kwargs": {
+        "default_step_size": 1.2,
+        "cuda_rendering": true,
+        "mode": "scale_modify",
+        "if_dmax": true,
+        "dmax_mode": "fix",
+        "dmax": 0.5
+   } 
+}

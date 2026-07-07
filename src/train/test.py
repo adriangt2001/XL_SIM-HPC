@@ -9,37 +9,40 @@ from torchvision.utils import make_grid
 from tqdm import tqdm
 
 import wandb
-from src.simulation.microscope import Microscope
-from src.simulation.sim_pipeline import ImageNoiseModel, SimulatorPipeline
+from src.models import get_model
+from src.simulation.sim_pipeline import SimulatorPipeline
 
 from .datasets import prepare_data
-from .models import get_model
-from .parser import parse_arguments
+from .parser import parse_arguments_test
 
 
 def main(args: Namespace):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, preprocess_fn, postprocess_fn = get_model(args)
+
+    # Main model
+    model, preprocess_fn, postprocess_fn = get_model(
+        args.main_model_name, args.main_model_config, args.checkpoint
+    )
     model = model.to(device=device)
     model.eval()
+
+    # Comparison
+    comparison_models = []
+    for model_name, model_config, model_checkpoint in zip(args.comparison_model_names, args.comparison_model_configs, args.comparison_checkpoints):
+        comparison_models.append(get_model(model_name, model_config, model_checkpoint))
+    
+    # Dataset and Simulator
     _, test_loader = prepare_data(args)
 
-    microscope = Microscope(
-        resolution=(
-            args.first_crop // args.upscale,
-            args.first_crop // args.upscale,
-        ),
-        device=device,
-    )
-    noise = ImageNoiseModel(device=device)
-    simulator = SimulatorPipeline(microscope, noise, device=device)
-
+    simulator = SimulatorPipeline.from_file(
+        args.microscope_config, args.noise_config
+    ).to(device=device)
     psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device=device)
     ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(device=device)
 
     wandb.init(
         project="XL-SIM",
-        name=f"test_{args.model_name}_{'_'.join(Path(args.checkpoint).parts[2:])}".rstrip(
+        name=f"test_{args.main_model_name}_{'_'.join(Path(args.checkpoint).parts[2:])}".rstrip(
             "_"
         ),
     )
@@ -52,11 +55,10 @@ def main(args: Namespace):
     with torch.inference_mode():
         for batch in tqdm(test_loader, desc="Test progress"):
             targets = batch["hr"].to(device=device)
-
             pixel_values, calibs = simulator(targets)
             psf = simulator.microscope.psf_em
             preprocessed_batch = preprocess_fn(
-                pixel_values=pixel_values, psf=psf, calibs=calibs
+                pixel_values=pixel_values, psf=psf, calibs=calibs, upscale=args.upscale
             )
             outputs = model(**preprocessed_batch)
             outputs = postprocess_fn(outputs)
@@ -69,23 +71,34 @@ def main(args: Namespace):
             ssim_fn.update(outputs, targets)
 
             if not logged_batch:
+                comparison_samples = []
+                for comp_model, comp_pre_fn, comp_post_fn in comparison_models:
+                    comp_preprocessed = comp_pre_fn(pixel_values=pixel_values, psf=psf, calibs=calibs)
+                    comp_out = comp_model(**comp_preprocessed)
+                    comparison_samples.append(comp_post_fn(comp_out, target=targets))
+                comparison_samples = torch.stack(comparison_samples, dim=1)
+                    
                 images = []
-                for i, (pred, inp, target) in enumerate(
-                    zip(outputs, pixel_values, targets)
+                for i, (pred, comp_preds, inp, target) in enumerate(
+                    zip(outputs, comparison_samples, pixel_values, targets)
                 ):
                     if i > 4:
                         break
+                    nrow = 2 + comp_preds.shape[0]
                     image = make_grid(
                         [
                             target,
                             pred,
+                            *comp_preds,
                             F.interpolate(
                                 inp[None, 12:13],
                                 scale_factor=args.upscale,
                                 mode="nearest",
                             )[0],
+                            torch.abs(pred - target),
+                            *[torch.abs(comp_pred - target) for comp_pred in comp_preds]
                         ],
-                        nrow=2,
+                        nrow=nrow,
                     )
                     images.append(
                         wandb.Image(
@@ -113,5 +126,5 @@ def main(args: Namespace):
 
 
 if "__main__" == __name__:
-    args = parse_arguments()
+    args = parse_arguments_test()
     main(args)

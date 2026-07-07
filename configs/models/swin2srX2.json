@@ -1,0 +1,6 @@
+{
+    "num_channels": 25,
+    "num_channels_out": 1,
+    "window_size": 8,
+    "upscale": 2
+}

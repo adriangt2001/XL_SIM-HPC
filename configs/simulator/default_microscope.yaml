@@ -1,0 +1,21 @@
+# Configuration for a x2 downsampling from a 1024x1024 image
+pattern_case: multipoint
+cam_height: 512
+cam_width: 512
+cam_pix: 6.5
+binn_simu: 2
+single_plane: True
+axial_fov: 30
+periodicity: 1
+wavelength_ex: 488
+wavelength_em: 520
+phase_optim: 1
+aod_propag: 1
+numerical_aperture: 1.2
+magnification: 60
+focal: 200
+pix_size_simu_axi: 200
+upsampling_factor: 1.05
+inpainting_mask: 0.8
+noise_level_gaussian: 0.1
+noise_level_poisson: 0.1

@@ -1,0 +1,3 @@
+# Default simulator noise
+inpainting_noise: 0.2
+gaussian_noise: 0.1

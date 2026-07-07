@@ -2,16 +2,24 @@ import torch
 from configargparse import Namespace
 from torch.nn.functional import l1_loss
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import LinearLR, SequentialLR, CosineAnnealingLR#, MultiStepLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    LinearLR,
+    SequentialLR,
+    MultiStepLR
+)
+
+from src.models import get_model
 
 from .datasets import prepare_data
-from .models import get_model
-from .parser import parse_arguments
+from .parser import parse_arguments_train
 from .trainer import Trainer
 
 
 def main(args: Namespace):
-    model, preprocess_fn, postprocess_fn = get_model(args)
+    model, preprocess_fn, postprocess_fn = get_model(
+        args.model_name, args.model_config, args.checkpoint
+    )
     model = model.to(memory_format=torch.channels_last)
     train_loader, valid_loader = prepare_data(args)
     optimizer = AdamW(model.parameters(), args.lr)
@@ -21,13 +29,13 @@ def main(args: Namespace):
         end_factor=1.0,
         total_iters=args.warmup_iterations,
     )
-    # adjusted_milestones = [
-    #     m - args.warmup_iterations for m in args.scheduler_milestones
-    # ]
-    # decay_scheduler = MultiStepLR(
-    #     optimizer, adjusted_milestones, gamma=args.decay_factor
-    # )
-    decay_scheduler = CosineAnnealingLR(optimizer, args.num_iterations, eta_min=1e-7)
+    adjusted_milestones = [
+        m - args.warmup_iterations for m in args.scheduler_milestones
+    ]
+    decay_scheduler = MultiStepLR(
+        optimizer, adjusted_milestones, gamma=args.decay_factor
+    )
+    # decay_scheduler = CosineAnnealingLR(optimizer, args.num_iterations, eta_min=1e-7)
     scheduler = SequentialLR(
         optimizer, [warmup_scheduler, decay_scheduler], [args.warmup_iterations]
     )
@@ -63,5 +71,5 @@ def main(args: Namespace):
 
 
 if "__main__" == __name__:
-    args = parse_arguments()
+    args = parse_arguments_train()
     main(args)

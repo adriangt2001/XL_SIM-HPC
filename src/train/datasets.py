@@ -48,7 +48,7 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
     def my_collate_fn(batch):
         return {
             "hr": torch.stack([sample["hr"] for sample in batch]),
-            "padding": torch.stack([sample["padding"] for sample in batch])
+            "padding": torch.stack([sample["padding"] for sample in batch]),
         }
 
     return train_dataset, valid_dataset, my_collate_fn
@@ -125,9 +125,9 @@ def prepare_data_distributed(args: Namespace):
 if "__main__" == __name__:
     from tqdm import tqdm
 
-    from src.train.parser import parse_arguments
+    from src.train.parser import parse_arguments_train
 
-    args = parse_arguments(is_test=True)
+    args = parse_arguments_train(is_test=True)
 
     if 1 == args.test:
         train_dataloader, valid_dataloader = prepare_data(args)

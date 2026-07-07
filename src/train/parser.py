@@ -1,7 +1,7 @@
 from configargparse import ArgumentParser, Namespace
 
 
-def parse_arguments(is_test: bool = False) -> Namespace:
+def parse_arguments_train(is_test: bool = False) -> Namespace:
     parser = ArgumentParser()
 
     if is_test:
@@ -17,16 +17,10 @@ def parse_arguments(is_test: bool = False) -> Namespace:
         "--model_name", type=str, default="Swin2SR", help="Name of the model to train"
     )
     parser.add_argument(
-        "--in_num_channels", type=int, default=25, help="Number of input channels"
-    )
-    parser.add_argument(
-        "--out_num_channels", type=int, default=1, help="Number of output channels"
-    )
-    parser.add_argument(
-        "--window_size",
-        type=int,
-        default=8,
-        help="Size of the patch window (only needed for transformer models)",
+        "--model_config",
+        type=str,
+        default="configs/models/swin2srX2.json",
+        help="Path to the model configuration",
     )
     parser.add_argument("--upscale", type=int, default=2, help="Upsampling factor")
 
@@ -123,6 +117,100 @@ def parse_arguments(is_test: bool = False) -> Namespace:
         type=int,
         default=1000,
         help="Iterations between image logs",
+    )
+
+    # Simulator
+    parser.add_argument(
+        "--microscope_config",
+        type=str,
+        default="configs/simulator/default_microscope.yaml",
+        help="Path to the microscope configuration",
+    )
+    parser.add_argument(
+        "--noise_config",
+        type=str,
+        default="configs/simulator/default_noise.yaml",
+        help="Path to the noise configuration",
+    )
+
+    args = parser.parse_args()
+
+    return args
+
+
+def parse_arguments_test(is_test: bool = False) -> Namespace:
+    parser = ArgumentParser()
+
+    if is_test:
+        parser.add_argument("test", type=int, help="Test type")
+
+    # Config file
+    parser.add_argument(
+        "-c", "--config", is_config_file=True, help="Path to config file"
+    )
+
+    # Models configuration
+    parser.add_argument(
+        "--main_model_name",
+        type=str,
+        default="Swin2SR",
+        help="Name of the main model to test",
+    )
+    parser.add_argument(
+        "--main_model_config",
+        type=str,
+        default="configs/models/swin2srX2.json",
+        help="Path to the main model configuration",
+    )
+    parser.add_argument(
+        "--comparison_model_names",
+        type=str,
+        nargs="+",
+        default=["RL_Sum", "Sum"],
+        help="Names of other methods to compare against",
+    )
+    parser.add_argument(
+        "--comparison_model_configs",
+        type=str,
+        nargs="+",
+        default=["configs/models/rlX2_sum.json", "configs/models/rlX2_sum.json"],
+        help="Path to the other methods configuration. Must be in the same order as the names.",
+    )
+    parser.add_argument("--upscale", type=int, default=2, help="Upsampling factor")
+
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume training",
+    )
+    parser.add_argument(
+        "--comparison_checkpoints",
+        type=str,
+        nargs="+",
+        default=[None, None],
+        help="Path to checkpoint to resume training",
+    )
+
+    # Dataset, preprocessing and postprocessing
+    parser.add_argument(
+        "--dataset", type=str, default="data/DIV2K", help="Path to the dataset"
+    )
+    parser.add_argument(
+        "--split", type=str, default="train", help="Name of the split to load"
+    )
+    parser.add_argument(
+        "--test_size",
+        type=float,
+        default=0.99,
+        help="Size of the validation/test set of the dataset",
+    )
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
+    parser.add_argument(
+        "--num_workers", type=int, default=4, help="Num workers for DataLoader"
+    )
+    parser.add_argument(
+        "--first_crop", type=int, default=256, help="Size of LR first cropping"
     )
 
     # Simulator

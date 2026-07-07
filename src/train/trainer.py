@@ -142,7 +142,7 @@ class Trainer:
             )
 
             preprocessed_batch = self.preprocess_fn(
-                pixel_values=pixel_values, calibs=calibs
+                pixel_values=pixel_values, calibs=calibs, upscale=self.upscale
             )
 
         with self.accelerator.autocast():
@@ -297,6 +297,8 @@ class Trainer:
         best_ssim: dict[str, int],
     ):
         self.accelerator.save_state(self.output_dir)
+        checkpoint_path = self.output_dir / Path("checkpoints")
+        checkpoint_path = sorted(list(checkpoint_path.iterdir()))[-1]
         torch.save(
             {
                 "step": step,
@@ -304,11 +306,11 @@ class Trainer:
                 "best_psnr": best_psnr,
                 "best_ssim": best_ssim,
             },
-            self.output_dir / Path("train_info.pt"),
+            checkpoint_path / Path("train_info.pt"),
         )
 
     def load_state(self):
-        self.accelerator.load_state(self.checkpoint.parts[:-1])
+        self.accelerator.load_state(self.checkpoint)
         ckpt = torch.load(self.checkpoint / Path("train_info.pt"))
         step = ckpt["step"]
         epoch = ckpt["epoch"]
@@ -371,9 +373,9 @@ class Trainer:
 if "__main__" == __name__:
     from src.train.datasets import prepare_data
     from src.train.models import get_model
-    from src.train.parser import parse_arguments
+    from src.train.parser import parse_arguments_train
 
-    args = parse_arguments(is_test=True)
+    args = parse_arguments_train(is_test=True)
 
     model = get_model(args)
     train_loader, valid_loader = prepare_data(args)

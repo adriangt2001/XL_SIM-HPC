@@ -1,0 +1,30 @@
+# Model configuration
+model_name: GSASR
+model_config: configs/models/gsasr.json
+upscale: 2
+
+# Dataset, preprocessing and postprocessing
+dataset: data/LSDIR
+test_size: 0.2
+batch_size: 8
+num_workers: 8
+first_crop: 1024
+second_crop: 48
+
+# Training
+num_iterations: 500000
+warmup_iterations: 2000
+warmup_lr: 1e-7
+lr: 1e-4
+scheduler_milestones: [250000, 400000, 450000, 475000]
+decay_factor: 0.5
+max_grad_norm: 1.0
+valid_freq: 10000
+save_freq: 10000
+output_dir: runs
+report_scalar_freq: 100
+report_image_freq: 10000
+
+# Simulator
+microscope_config: configs/simulator/default_microscope.yaml
+noise_config: configs/simulator/default_noise.yaml

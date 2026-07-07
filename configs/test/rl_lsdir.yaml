@@ -1,0 +1,32 @@
+# Model configuration
+model_name: RL
+in_num_channels: 25
+out_num_channels: 1
+window_size: 8
+upscale: 2
+
+# Dataset, preprocessing and postprocessing
+dataset: data/LSDIR
+split: validation
+test_size: 0.99
+batch_size: 16
+num_workers: 8
+first_crop: 1024
+second_crop: 64
+
+# Training
+num_iterations: 510000
+warmup_iterations: 10000
+warmup_lr: 1e-6
+lr: 1e-4
+scheduler_milestones: [250000, 400000, 450000, 475000]
+decay_factor: 0.5
+max_grad_norm: 1.0
+valid_freq: 1000
+save_freq: 1000
+output_dir: runs
+report_scalar_freq: 100
+report_image_freq: 1000
+
+# Checkpoint
+checkpoint: None
