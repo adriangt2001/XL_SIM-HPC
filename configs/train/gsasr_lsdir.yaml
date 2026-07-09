@@ -13,10 +13,12 @@ second_crop: 48
 
 # Training
 num_iterations: 500000
+optimizer: adamw
+lr: 1e-4
+scheduler: multistep
 warmup_iterations: 2000
 warmup_lr: 1e-7
-lr: 1e-4
-scheduler_milestones: [250000, 400000, 450000, 475000]
+decay_iterations: [250000, 400000, 450000, 475000]
 decay_factor: 0.5
 max_grad_norm: 1.0
 valid_freq: 10000

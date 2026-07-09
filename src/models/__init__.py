@@ -33,68 +33,74 @@ def __load_model(model: torch.nn.Module, checkpoint_path: str):
 
 
 def get_model(model_name: str, model_config: str, checkpoint: str):
-    if "Swin2SR" == model_name:
-        cfg = Swin2SRConfig.from_json_file(model_config)
-        model = Swin2SRForImageSuperResolution(cfg)
+    match model_name:
+        case "Swin2SR":
+            cfg = Swin2SRConfig.from_json_file(model_config)
+            model = Swin2SRForImageSuperResolution(cfg)
 
-        if checkpoint is not None:
-            model = __load_model(model, f"{checkpoint}/model.safetensors")
+            if checkpoint is not None:
+                model = __load_model(model, f"{checkpoint}/model.safetensors")
 
-        def preprocess_fn(**kwargs):
-            return {"pixel_values": kwargs["pixel_values"]}
+            def preprocess_fn(**kwargs):
+                return {"pixel_values": kwargs["pixel_values"]}
 
-        def postprocess_fn(output: ImageSuperResolutionOutput):
-            return output.reconstruction
-    
-    elif "GSASR" == model_name:
-        model = GSASR.from_json_file(model_config)
-        
-        if checkpoint is not None:
-            model == __load_model(model, f"{checkpoint}/model.safetensors")
-        
-        def preprocess_fn(**kwargs):
-            return {"pixel_values": kwargs["pixel_values"], "upscale": kwargs["upscale"]}
+            def postprocess_fn(output: ImageSuperResolutionOutput):
+                return output.reconstruction
 
-        def postprocess_fn(output: torch.Tensor):
-            return output
+        case "GSASR":
+            model = GSASR.from_json_file(model_config)
 
-    elif "RL" == model_name:
-        model = RichardsonLucy.from_json_file(model_config)
+            if checkpoint is not None:
+                model == __load_model(model, f"{checkpoint}/model.safetensors")
 
-        def preprocess_fn(**kwargs):
-            return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
+            def preprocess_fn(**kwargs):
+                return {
+                    "pixel_values": kwargs["pixel_values"],
+                    "upscale": kwargs["upscale"],
+                }
 
-        def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
-            method = model.op
-            if "max" == method:
-                processed_img = output
-            elif "mean" == method:
-                avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                processed_img = output / avg[..., None, None, None]
-            elif "sum" == method:
-                avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                processed_img = output / avg[..., None, None, None]
-            return processed_img
+            def postprocess_fn(output: torch.Tensor):
+                return output
 
-    elif "Basic" == model_name:
-        model = BasicOP.from_json_file(model_config)
+        case "RL":
+            model = RichardsonLucy.from_json_file(model_config)
 
-        def preprocess_fn(**kwargs):
-            return {"pixel_values": kwargs["pixel_values"]}
+            def preprocess_fn(**kwargs):
+                return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
 
-        def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
-            method = model.op
-            if "max" == method:
-                processed_img = output
-            elif "mean" == method:
-                avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                processed_img = output / avg[..., None, None, None]
-            elif "sum" == method:
-                avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                processed_img = output / avg[..., None, None, None]
-            return processed_img
+            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+                method = model.op
+                if "max" == method:
+                    processed_img = output
+                elif "mean" == method:
+                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                    processed_img = output / avg[..., None, None, None]
+                elif "sum" == method:
+                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                    processed_img = output / avg[..., None, None, None]
+                return processed_img
 
-    else:
-        raise ValueError(f"Model {model_name} not implemented.")
+        case "Basic":
+            model = BasicOP.from_json_file(model_config)
+
+            def preprocess_fn(**kwargs):
+                return {"pixel_values": kwargs["pixel_values"]}
+
+            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+                method = model.op
+                if "max" == method:
+                    processed_img = output
+                elif "mean" == method:
+                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                    processed_img = output / avg[..., None, None, None]
+                elif "sum" == method:
+                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                    processed_img = output / avg[..., None, None, None]
+                return processed_img
+
+        case _:
+            raise ValueError(
+                f"{model_name} not implemented. Feel free to add it inside models/__init__.py."
+            )
 
     return model, preprocess_fn, postprocess_fn

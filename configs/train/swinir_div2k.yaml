@@ -1,8 +1,6 @@
 # Model configuration
 model_name: Swin2SR
-in_num_channels: 25
-out_num_channels: 1
-window_size: 8
+model_config: configs/models/swin2srX2.json
 upscale: 2
 
 # Dataset, preprocessing and postprocessing

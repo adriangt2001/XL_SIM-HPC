@@ -57,10 +57,12 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
 def prepare_data(args: Namespace):
     data_path = Path(args.dataset)
 
-    if "LSDIR" == data_path.stem:
-        train_dataset, valid_dataset, my_collate_fn = _prepare_lsdir(data_path, args)
-    else:
-        pass
+    match data_path.stem:
+        case "LSDIR":
+            train_dataset, valid_dataset, my_collate_fn = _prepare_lsdir(data_path, args)
+            
+        case _:
+            raise ValueError(f"{data_path.stem} dataset not implemented. Feel free to add it in datasets.py.")
 
     train_dataloader = DataLoader(
         train_dataset,

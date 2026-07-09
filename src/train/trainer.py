@@ -255,7 +255,7 @@ class Trainer:
                 random=False,
             )
             preprocessed_batch = self.preprocess_fn(
-                pixel_values=pixel_values, calibs=calibs
+                pixel_values=pixel_values, calibs=calibs, upscale=self.upscale
             )
 
             with self.accelerator.autocast():
@@ -298,7 +298,9 @@ class Trainer:
     ):
         self.accelerator.save_state(self.output_dir)
         checkpoint_path = self.output_dir / Path("checkpoints")
-        checkpoint_path = sorted(list(checkpoint_path.iterdir()))[-1]
+        checkpoint_path = sorted(
+            list(checkpoint_path.iterdir()), key=lambda x: int(x.name.split("_")[-1])
+        )[-1]
         torch.save(
             {
                 "step": step,

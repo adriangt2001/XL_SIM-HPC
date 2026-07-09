@@ -62,6 +62,9 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         default=500000,
         help="Number of training iterations",
     )
+    parser.add_argument("--optimizer", type=str, default="adamw", help="Optimizer to use for training")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument("--scheduler", type=str, default="multistep", help="Scheduler to use for the decay of LR")
     parser.add_argument(
         "--warmup_iterations",
         type=int,
@@ -74,13 +77,12 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         default=1e-6,
         help="Learning rate warmup initial factor",
     )
-    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument(
-        "--scheduler_milestones",
+        "--decay_iterations",
         type=int,
         nargs="+",
         default=[250000, 400000, 450000, 475000],
-        help="Milestones for MultiStepLR",
+        help="Iterations for the decay scheduler",
     )
     parser.add_argument(
         "--decay_factor",
