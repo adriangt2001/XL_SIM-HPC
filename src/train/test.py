@@ -3,7 +3,6 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 from configargparse import Namespace
-from torch.nn.functional import l1_loss
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchvision.utils import make_grid
 from tqdm import tqdm
@@ -11,8 +10,10 @@ from tqdm import tqdm
 import wandb
 from src.models import get_model
 from src.simulation.sim_pipeline import SimulatorPipeline
+from src.utils.preprocessing import crop_tensor
+from src.utils.visualization import plot_sr_comparison
 
-from .datasets import prepare_data
+from .datasets import get_data
 from .parser import parse_arguments_test
 
 
@@ -21,18 +22,38 @@ def main(args: Namespace):
 
     # Main model
     model, preprocess_fn, postprocess_fn = get_model(
-        args.main_model_name, args.main_model_config, args.checkpoint
+        args.main_model_name,
+        args.main_model_config,
+        args.checkpoint,
+        args.lora,
+        lora=args.lora,
+        lora_r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        lora_target_modules=args.lora_target_modules,
+        lora_bias=args.lora_bias,
     )
     model = model.to(device=device)
     model.eval()
 
     # Comparison
     comparison_models = []
-    for model_name, model_config, model_checkpoint in zip(args.comparison_model_names, args.comparison_model_configs, args.comparison_checkpoints):
+    for model_name, model_config, model_checkpoint in zip(
+        args.comparison_model_names,
+        args.comparison_model_configs,
+        args.comparison_checkpoints,
+    ):
         comparison_models.append(get_model(model_name, model_config, model_checkpoint))
-    
+
     # Dataset and Simulator
-    _, test_loader = prepare_data(args)
+    _, _, test_loader = get_data(
+        args.dataset,
+        args.test_size,
+        args.first_crop,
+        args.split,
+        args.batch_size,
+        args.num_workers,
+    )
 
     simulator = SimulatorPipeline.from_file(
         args.microscope_config, args.noise_config
@@ -40,32 +61,38 @@ def main(args: Namespace):
     psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device=device)
     ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(device=device)
 
-    wandb.init(
-        project="XL-SIM",
-        name=f"test_{args.main_model_name}_{'_'.join(Path(args.checkpoint).parts[2:])}".rstrip(
-            "_"
-        ),
+    run_name = f"test_{args.main_model_name}_{'_'.join(Path(args.checkpoint).parts[2:])}".rstrip(
+        "_"
     )
 
-    total_loss = 0.0
-    count = 0
+    wandb.init(
+        project="XL-SIM",
+        name=run_name,
+    )
 
     logged_batch = False
 
     with torch.inference_mode():
         for batch in tqdm(test_loader, desc="Test progress"):
             targets = batch["hr"].to(device=device)
+            target_padding: torch.Tensor = batch["padding"]
+
             pixel_values, calibs = simulator(targets)
+            pixel_values, targets, _ = crop_tensor(
+                pixel_values,
+                args.second_crop,
+                pair_image=targets,
+                pair_scale_factor=args.upscale,
+                offset=target_padding.max(dim=0).values // (2 * args.upscale),
+                mode=False,
+            )
             psf = simulator.microscope.psf_em
             preprocessed_batch = preprocess_fn(
                 pixel_values=pixel_values, psf=psf, calibs=calibs, upscale=args.upscale
             )
+
             outputs = model(**preprocessed_batch)
             outputs = postprocess_fn(outputs)
-
-            loss = l1_loss(outputs, targets)
-            total_loss += loss.item()
-            count += 1
 
             psnr_fn.update(outputs, targets)
             ssim_fn.update(outputs, targets)
@@ -73,38 +100,46 @@ def main(args: Namespace):
             if not logged_batch:
                 comparison_samples = []
                 for comp_model, comp_pre_fn, comp_post_fn in comparison_models:
-                    comp_preprocessed = comp_pre_fn(pixel_values=pixel_values, psf=psf, calibs=calibs)
+                    comp_preprocessed = comp_pre_fn(
+                        pixel_values=pixel_values, psf=psf, calibs=calibs
+                    )
                     comp_out = comp_model(**comp_preprocessed)
-                    comparison_samples.append(comp_post_fn(comp_out, target=targets))
-                comparison_samples = torch.stack(comparison_samples, dim=1)
-                    
+                    comparison_samples.append(
+                        (comp_post_fn(comp_out, target=targets), comp_model._get_name())
+                    )
+
                 images = []
-                for i, (pred, comp_preds, inp, target) in enumerate(
-                    zip(outputs, comparison_samples, pixel_values, targets)
+                for i, (pred, inp, target) in enumerate(
+                    zip(outputs, pixel_values, targets)
                 ):
                     if i > 4:
                         break
-                    nrow = 2 + comp_preds.shape[0]
-                    image = make_grid(
-                        [
-                            target,
-                            pred,
-                            *comp_preds,
-                            F.interpolate(
-                                inp[None, 12:13],
-                                scale_factor=args.upscale,
-                                mode="nearest",
-                            )[0],
-                            torch.abs(pred - target),
-                            *[torch.abs(comp_pred - target) for comp_pred in comp_preds]
-                        ],
-                        nrow=nrow,
-                    )
+                    nrow = 2 + len(comparison_samples)
+                    tiles = [
+                        target,
+                        pred,
+                        *[img[i] for img, _ in comparison_samples],
+                        F.interpolate(
+                            inp[None, 12:13], scale_factor=args.upscale, mode="nearest"
+                        )[0],
+                        torch.abs(pred - target),
+                        *[torch.abs(img[i] - target) for img, _ in comparison_samples],
+                    ]
+
+                    image = make_grid(tiles, nrow=nrow)
                     images.append(
                         wandb.Image(
                             image.clip(0, 1),
                             caption=f"Sample {i}:\n Top left: Target | Top right: Prediction\n Bottom left: Input C12",
                         )
+                    )
+
+                    plot_sr_comparison(
+                        target,
+                        inp[12:13],
+                        [(img[i], name) for img, name in comparison_samples]
+                        + [(pred, args.main_model_name)],
+                        save_path=f"logs/{run_name}.png",
                     )
                 wandb.log({"test/images": images})
 

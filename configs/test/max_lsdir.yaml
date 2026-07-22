@@ -28,5 +28,9 @@ output_dir: runs
 report_scalar_freq: 100
 report_image_freq: 1000
 
+# Simulator
+microscope_config: configs/simulator/default_microscope.yaml
+noise_config: configs/simulator/default_noise.yaml
+
 # Checkpoint
 checkpoint: None

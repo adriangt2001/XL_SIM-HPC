@@ -167,7 +167,7 @@ def generate_2D_gaussian_splatting_step(sr_size, gs_parameters, scale, scale_mod
     if mode == 'scale':
         final_scale = scale
     elif mode == 'scale_modify':
-        assert scale_modify[0] == scale_modify[1], f"scale_modify is not the same-{scale_modify}"
+        assert scale_modify.ndim == 1 or scale_modify[0] == scale_modify[1], f"scale_modify is not the same-{scale_modify}"
         final_scale = scale_modify[0]
     step_size = default_step_size/ final_scale
 

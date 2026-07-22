@@ -137,8 +137,8 @@ class Trainer:
                 self.second_crop_size,
                 pair_image=targets,
                 pair_scale_factor=self.upscale,
-                offset=target_padding.max() // (2 * self.upscale),
-                random=True,
+                offset=target_padding.max(dim=0).values // (self.upscale),
+                mode='random',
             )
 
             preprocessed_batch = self.preprocess_fn(
@@ -243,17 +243,17 @@ class Trainer:
         count = 0
         for batch in tqdm(loader, desc="Valid progress", main_process_only=True):
             targets = batch["hr"]
-            target_padding = batch["padding"]
+            # target_padding = batch["padding"]
 
             pixel_values, calibs = self.simulator(targets)
-            pixel_values, targets, _ = crop_tensor(
-                pixel_values,
-                self.second_crop_size,
-                pair_image=targets,
-                pair_scale_factor=self.upscale,
-                offset=target_padding.max() // (2 * self.upscale),
-                random=False,
-            )
+            # pixel_values, targets, _ = crop_tensor(
+            #     pixel_values,
+            #     self.second_crop_size,
+            #     pair_image=targets,
+            #     pair_scale_factor=self.upscale,
+            #     offset=target_padding.max(dim=0).values // (self.upscale),
+            #     random='center',
+            # )
             preprocessed_batch = self.preprocess_fn(
                 pixel_values=pixel_values, calibs=calibs, upscale=self.upscale
             )
@@ -373,14 +373,14 @@ class Trainer:
 
 
 if "__main__" == __name__:
-    from src.train.datasets import prepare_data
-    from src.train.models import get_model
+    from src.train.datasets import get_data
+    from src.models import get_model
     from src.train.parser import parse_arguments_train
 
     args = parse_arguments_train(is_test=True)
 
     model = get_model(args)
-    train_loader, valid_loader = prepare_data(args)
+    train_loader, valid_loader = get_data(args)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=0)
     output_dir = args.output_dir

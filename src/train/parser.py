@@ -23,6 +23,9 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         help="Path to the model configuration",
     )
     parser.add_argument("--upscale", type=int, default=2, help="Upsampling factor")
+    parser.add_argument(
+        "--weights", type=str, default=None, help="Path to model weights folder"
+    )
 
     parser.add_argument(
         "--checkpoint",
@@ -62,9 +65,16 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         default=500000,
         help="Number of training iterations",
     )
-    parser.add_argument("--optimizer", type=str, default="adamw", help="Optimizer to use for training")
+    parser.add_argument(
+        "--optimizer", type=str, default="adamw", help="Optimizer to use for training"
+    )
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
-    parser.add_argument("--scheduler", type=str, default="multistep", help="Scheduler to use for the decay of LR")
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="multistep",
+        help="Scheduler to use for the decay of LR",
+    )
     parser.add_argument(
         "--warmup_iterations",
         type=int,
@@ -89,6 +99,9 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         type=float,
         default=0.5,
         help="Decay factor for the learning rate scheduler",
+    )
+    parser.add_argument(
+        "--loss_name", type=str, default="l1", help="Loss to use during training"
     )
     parser.add_argument(
         "--max_grad_norm",
@@ -119,6 +132,26 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         type=int,
         default=1000,
         help="Iterations between image logs",
+    )
+    parser.add_argument(
+        "--lora", action="store_true", default=False, help="Whether to use lora or not"
+    )
+    parser.add_argument(
+        "--lora_r", type=int, default=16, help="Rank of the lora matrices"
+    )
+    parser.add_argument("--lora_alpha", type=int, default=32, help="Alpha of the lora")
+    parser.add_argument(
+        "--lora_dropout", type=float, default=0.1, help="Dropout rate of the lora"
+    )
+    parser.add_argument(
+        "--lora_target_modules",
+        type=str,
+        nargs="+",
+        default=["all-linear"],
+        help="Layers to target with lora",
+    )
+    parser.add_argument(
+        "--lora_bias", type=str, default="none", help="Bias to target with lora"
     )
 
     # Simulator
@@ -213,6 +246,9 @@ def parse_arguments_test(is_test: bool = False) -> Namespace:
     )
     parser.add_argument(
         "--first_crop", type=int, default=256, help="Size of LR first cropping"
+    )
+    parser.add_argument(
+        "--second_crop", type=int, default=64, help="Size of LR second cropping"
     )
 
     # Simulator

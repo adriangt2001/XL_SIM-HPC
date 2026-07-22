@@ -1,31 +1,39 @@
 # Model configuration
 model_name: Swin2SR
 model_config: configs/models/swin2srX2.json
+weights: runs/Swin2SR/run_20260629_093149/best_psnr
 upscale: 2
 
 # Dataset, preprocessing and postprocessing
-dataset: data/LSDIR
-test_size: 0.2
+dataset: data/BioSR
+test_size: 0.15
 batch_size: 8
 num_workers: 8
 first_crop: 1024
 second_crop: 64
 
 # Training
-num_iterations: 500000
+num_iterations: 10000
 optimizer: adamw
 lr: 2e-4
 scheduler: cosine
-warmup_iterations: 10000
+warmup_iterations: 1000
 warmup_lr: 1e-7
-decay_iterations: [500000]
+decay_iterations: [10000]
 decay_factor: 1e-7
+loss_name: l1
 max_grad_norm: 1.0
-valid_freq: 10000
-save_freq: 10000
+valid_freq: 1000
+save_freq: 1000
 output_dir: runs
 report_scalar_freq: 100
-report_image_freq: 10000
+report_image_freq: 1000
+lora: true
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.1
+lora_target_modules: [all-linear]
+lora_bias: none
 
 # Simulator
 microscope_config: configs/simulator/default_microscope.yaml

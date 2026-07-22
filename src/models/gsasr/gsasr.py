@@ -1,24 +1,14 @@
-import json
-
 import torch
 
+from ..base_model import BaseModel
 from .fea2gs import Fea2GS
 from .gaussian_splatting import generate_2D_gaussian_splatting_step
 from .swinir import SwinIRNOUP
 
 
-class GSASR(torch.nn.Module):
-    @classmethod
-    def from_json_file(cls, filename: str):
-        with open(filename, mode="r") as f:
-            config = json.load(f)
-        return cls(**config)
-
+class GSASR(BaseModel):
     def __init__(
-        self,
-        encoder_kwargs: dict,
-        decoder_kwargs: dict,
-        rasterization_kwargs: dict
+        self, encoder_kwargs: dict, decoder_kwargs: dict, rasterization_kwargs: dict
     ):
         super().__init__()
         self.encoder = SwinIRNOUP(**encoder_kwargs)
@@ -45,7 +35,8 @@ class GSASR(torch.nn.Module):
                 gs_parameters=gaussian_params,
                 scale=upscale_tensor,
                 scale_modify=scale_modify,
-                **self.rasterization_kwargs)
+                **self.rasterization_kwargs,
+            )
             output_batch.append(output)
         output = torch.stack(output_batch, dim=0)
         return output

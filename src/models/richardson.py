@@ -1,18 +1,13 @@
-import json
 from typing import Literal
 
 import torch
 import torch.nn.functional as F
 from skimage.restoration import richardson_lucy
 
+from .base_model import BaseModel
 
-class RichardsonLucy(torch.nn.Module):
-    @classmethod
-    def from_json_file(cls, filename: str):
-        with open(filename, mode="r") as f:
-            config = json.load(f)
-        return cls(**config)
 
+class RichardsonLucy(BaseModel):
     def __init__(
         self,
         upscale: int,

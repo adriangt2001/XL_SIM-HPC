@@ -1,17 +1,12 @@
-import json
 from typing import Literal
 
 import torch
 import torch.nn.functional as F
 
+from .base_model import BaseModel
 
-class BasicOP(torch.nn.Module):
-    @classmethod
-    def from_json_file(cls, filename: str):
-        with open(filename, mode="r") as f:
-            config = json.load(f)
-        return cls(**config)
 
+class BasicOP(BaseModel):
     def __init__(
         self,
         upscale: int,

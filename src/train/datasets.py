@@ -3,18 +3,85 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from configargparse import Namespace
-from datasets import load_from_disk
+from datasets import Dataset, concatenate_datasets, load_from_disk
 from torch.utils.data import DataLoader, DistributedSampler
 from torchvision.transforms.functional import to_tensor
 
 from src.utils.preprocessing import crop_pil
+from PIL.TiffImagePlugin import TiffImageFile
+import numpy as np
 
 
-def _prepare_lsdir(data_path: Path, args: Namespace):
-    dataset = load_from_disk(str(data_path / Path("data", args.split)))
+def _prepare_biosr(data_path: Path, test_size: float, first_crop: int):
+    assert test_size < 0.5, f"BioSR dataset assumes validation and test size are equal. Current test_size is {test_size}. Make sure it is <0.5."
+    data_path = data_path / Path("data")
 
-    splits = dataset.train_test_split(test_size=args.test_size, shuffle=False)
+    datasets = []
+    for split in data_path.iterdir():
+        ds = load_from_disk(str(split))
+        ds = ds.add_column("class", [split.name] * len(ds))
+        datasets.append(ds)
+
+    dataset: Dataset = concatenate_datasets(datasets)
+    dataset = dataset.class_encode_column("class")
+
+    splits1 = dataset.train_test_split(
+        test_size=test_size * 2, shuffle=True, stratify_by_column="class", seed=42
+    )
+    train_dataset = splits1["train"]
+    test_dataset = splits1["test"]
+
+    splits2 = test_dataset.train_test_split(
+        test_size=0.5, shuffle=True, stratify_by_column="class", seed=42
+    )
+    valid_dataset = splits2["train"]
+    test_dataset = splits2["test"]
+
+    def transform_train(sample):
+        hrs = []
+        padding = []
+
+        for idx in range(len(sample["hr"])):
+            hr = sample["hr"][idx]
+            hr, _, pad = crop_pil(hr, first_crop, mode='random')
+            hr = np.array(hr) / 65565
+            hr = torch.from_numpy(hr)[None, ...]
+            hrs.append(hr)
+            padding.append(torch.as_tensor(pad))
+
+        return {"hr": hrs, "padding": padding}
+
+    def transform_test(sample):
+        hrs = []
+        padding = []
+
+        for idx in range(len(sample["hr"])):
+            hr = sample["hr"][idx]
+            hr, _, pad = crop_pil(hr, first_crop, mode='center')
+            hr = np.array(hr) / 65565
+            hr = torch.from_numpy(hr)[None, ...]
+            hrs.append(hr)
+            padding.append(torch.as_tensor(pad))
+
+        return {"hr": hrs, "padding": padding}
+
+    train_dataset.set_transform(transform_train)
+    valid_dataset.set_transform(transform_test)
+    test_dataset.set_transform(transform_test)
+
+    def my_collate_fn(batch):
+        return {
+            "hr": torch.stack([sample["hr"] for sample in batch]),
+            "padding": torch.stack([sample["padding"] for sample in batch]),
+        }
+
+    return train_dataset, valid_dataset, test_dataset, my_collate_fn
+
+
+def _prepare_lsdir(data_path: Path, test_size: float, first_crop: int, split: str):
+    dataset = load_from_disk(str(data_path / Path("data", split)))
+
+    splits = dataset.train_test_split(test_size=test_size, shuffle=False)
     train_dataset = splits["train"]
     valid_dataset = splits["test"]
 
@@ -24,7 +91,7 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx].convert("L")
-            hr, _, pad = crop_pil(hr, args.first_crop, random=True)
+            hr, _, pad = crop_pil(hr, first_crop, mode='random')
             hrs.append(to_tensor(hr))
             padding.append(torch.as_tensor(pad))
 
@@ -36,7 +103,7 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx].convert("L")
-            hr, _, pad = crop_pil(hr, args.first_crop, random=False)
+            hr, _, pad = crop_pil(hr, first_crop, mode='center')
             hrs.append(to_tensor(hr))
             padding.append(torch.as_tensor(pad))
 
@@ -51,23 +118,39 @@ def _prepare_lsdir(data_path: Path, args: Namespace):
             "padding": torch.stack([sample["padding"] for sample in batch]),
         }
 
-    return train_dataset, valid_dataset, my_collate_fn
+    return train_dataset, valid_dataset, valid_dataset, my_collate_fn
 
 
-def prepare_data(args: Namespace):
-    data_path = Path(args.dataset)
+def get_data(
+    dataset: str,
+    test_size: float,
+    first_crop: int,
+    split: str,
+    batch_size: int,
+    num_workers: int,
+):
+    data_path = Path(dataset)
 
     match data_path.stem:
         case "LSDIR":
-            train_dataset, valid_dataset, my_collate_fn = _prepare_lsdir(data_path, args)
-            
+            train_dataset, valid_dataset, test_dataset, my_collate_fn = _prepare_lsdir(
+                data_path, test_size, first_crop, split
+            )
+
+        case "BioSR":
+            train_dataset, valid_dataset, test_dataset, my_collate_fn = _prepare_biosr(
+                data_path, test_size, first_crop
+            )
+
         case _:
-            raise ValueError(f"{data_path.stem} dataset not implemented. Feel free to add it in datasets.py.")
+            raise ValueError(
+                f"{data_path.stem} dataset not implemented. Feel free to add it in datasets.py."
+            )
 
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        batch_size=batch_size,
+        num_workers=num_workers,
         shuffle=True,
         drop_last=True,
         pin_memory=True,
@@ -77,8 +160,8 @@ def prepare_data(args: Namespace):
 
     valid_dataloader = DataLoader(
         valid_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        batch_size=batch_size,
+        num_workers=num_workers,
         shuffle=False,
         drop_last=True,
         pin_memory=True,
@@ -86,22 +169,45 @@ def prepare_data(args: Namespace):
         prefetch_factor=2,
     )
 
-    return train_dataloader, valid_dataloader
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=False,
+        drop_last=True,
+        pin_memory=True,
+        collate_fn=my_collate_fn,
+        prefetch_factor=2,
+    )
+
+    return train_dataloader, valid_dataloader, test_dataloader
 
 
-def prepare_data_distributed(args: Namespace):
-    data_path = Path(args.dataset)
+def prepare_data_distributed(
+    dataset: str,
+    test_size: float,
+    first_crop: int,
+    split: str,
+    batch_size: int,
+    num_workers: int,
+):
+    data_path = Path(dataset)
 
-    if "LSDIR" == data_path.stem:
-        train_dataset, valid_dataset, my_collate_fn = _prepare_lsdir(data_path, args)
-    else:
-        pass
+    match data_path.stem:
+        case "LSDIR":
+            train_dataset, valid_dataset, my_collate_fn = _prepare_lsdir(
+                data_path, test_size, first_crop, split
+            )
+        case _:
+            raise ValueError(
+                f"{data_path.stem} dataset not implemented. Feel free to add it in datasets.py."
+            )
 
     train_dataloader = DataLoader(
         train_dataset,
         sampler=DistributedSampler(train_dataset, shuffle=True),
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        batch_size=batch_size,
+        num_workers=num_workers,
         shuffle=False,
         drop_last=True,
         pin_memory=True,
@@ -112,8 +218,8 @@ def prepare_data_distributed(args: Namespace):
     valid_dataloader = DataLoader(
         valid_dataset,
         sampler=DistributedSampler(valid_dataset, shuffle=False),
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
+        batch_size=batch_size,
+        num_workers=num_workers,
         shuffle=False,
         drop_last=True,
         pin_memory=True,
@@ -132,7 +238,7 @@ if "__main__" == __name__:
     args = parse_arguments_train(is_test=True)
 
     if 1 == args.test:
-        train_dataloader, valid_dataloader = prepare_data(args)
+        train_dataloader, valid_dataloader = get_data(args)
         train_dataset = train_dataloader.dataset
         valid_dataset = valid_dataloader.dataset
         print("==== Train Dataset ====")
@@ -203,7 +309,7 @@ if "__main__" == __name__:
         accelerator = Accelerator()
         device = accelerator.device
 
-        train_dataloader, valid_dataloader = prepare_data(args)
+        train_dataloader, valid_dataloader = get_data(args)
         train_dataset = train_dataloader.dataset
         valid_dataset = valid_dataloader.dataset
         print("==== Train Dataset ====")

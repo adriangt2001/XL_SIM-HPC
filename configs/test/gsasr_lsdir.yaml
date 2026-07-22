@@ -1,6 +1,6 @@
 # Model configuration
-model_name: Swin2SR
-model_config: configs/models/swin2srX2.json
+model_name: GSASR
+model_config: configs/models/gsasr.json
 upscale: 2
 
 # Dataset, preprocessing and postprocessing
@@ -9,17 +9,17 @@ test_size: 0.2
 batch_size: 8
 num_workers: 8
 first_crop: 1024
-second_crop: 64
+second_crop: 48
 
 # Training
 num_iterations: 500000
 optimizer: adamw
-lr: 2e-4
-scheduler: cosine
-warmup_iterations: 10000
+lr: 1e-4
+scheduler: multistep
+warmup_iterations: 2000
 warmup_lr: 1e-7
-decay_iterations: [500000]
-decay_factor: 1e-7
+decay_iterations: [250000, 400000, 450000, 475000]
+decay_factor: 0.5
 max_grad_norm: 1.0
 valid_freq: 10000
 save_freq: 10000
@@ -30,3 +30,6 @@ report_image_freq: 10000
 # Simulator
 microscope_config: configs/simulator/default_microscope.yaml
 noise_config: configs/simulator/default_noise.yaml
+
+# Checkpoint
+checkpoint: runs/Swin2SR/run_20260629_093149/best_ssim

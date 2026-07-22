@@ -2,10 +2,10 @@ import torch
 from safetensors.torch import load_file, load_model
 from transformers import Swin2SRConfig, Swin2SRForImageSuperResolution
 from transformers.modeling_outputs import ImageSuperResolutionOutput
-
+from peft import LoraConfig, get_peft_model
 from .basic import BasicOP
-from .richardson import RichardsonLucy
 from .gsasr.gsasr import GSASR
+from .richardson import RichardsonLucy
 
 __all__ = ["get_model"]
 
@@ -13,7 +13,7 @@ __all__ = ["get_model"]
 # TODO: Fix RichardsonLucy and Basic method's contrast for Sum and Mean approach
 
 
-def __load_model(model: torch.nn.Module, checkpoint_path: str):
+def __load_model(model: torch.nn.Module, checkpoint_path: str, lora: bool):
     try:
         load_model(model, checkpoint_path)
     except RuntimeError:
@@ -21,7 +21,11 @@ def __load_model(model: torch.nn.Module, checkpoint_path: str):
         clean_state_dict = {}
         for key, value in state_dict.items():
             if key.startswith("_orig_mod."):
-                clean_key = key.replace("_orig_mod.", "", 1)
+                clean_key = (
+                    key.replace("_orig_mod.", "base_model.model.", 1)
+                    if lora
+                    else key.replace("_orig_mod.", "", 1)
+                )
             else:
                 clean_key = key
             clean_state_dict[clean_key] = value
@@ -32,14 +36,22 @@ def __load_model(model: torch.nn.Module, checkpoint_path: str):
     return model
 
 
-def get_model(model_name: str, model_config: str, checkpoint: str):
+def get_model(
+    model_name: str,
+    model_config: str,
+    checkpoint: str,
+    load_lora: bool,
+    lora: bool = False,
+    lora_r: int = None,
+    lora_alpha: int = None,
+    lora_dropout: float = None,
+    lora_target_modules: list[str] = None,
+    lora_bias: str = None,
+):
     match model_name:
         case "Swin2SR":
             cfg = Swin2SRConfig.from_json_file(model_config)
             model = Swin2SRForImageSuperResolution(cfg)
-
-            if checkpoint is not None:
-                model = __load_model(model, f"{checkpoint}/model.safetensors")
 
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"]}
@@ -49,9 +61,6 @@ def get_model(model_name: str, model_config: str, checkpoint: str):
 
         case "GSASR":
             model = GSASR.from_json_file(model_config)
-
-            if checkpoint is not None:
-                model == __load_model(model, f"{checkpoint}/model.safetensors")
 
             def preprocess_fn(**kwargs):
                 return {
@@ -69,15 +78,16 @@ def get_model(model_name: str, model_config: str, checkpoint: str):
                 return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
 
             def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
-                method = model.op
-                if "max" == method:
-                    processed_img = output
-                elif "mean" == method:
-                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                    processed_img = output / avg[..., None, None, None]
-                elif "sum" == method:
-                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                    processed_img = output / avg[..., None, None, None]
+                processed_img = output
+                # method = model.op
+                # if "max" == method:
+                #     processed_img = output
+                # elif "mean" == method:
+                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                #     processed_img = output / avg[..., None, None, None]
+                # elif "sum" == method:
+                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                #     processed_img = output / avg[..., None, None, None]
                 return processed_img
 
         case "Basic":
@@ -87,20 +97,42 @@ def get_model(model_name: str, model_config: str, checkpoint: str):
                 return {"pixel_values": kwargs["pixel_values"]}
 
             def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
-                method = model.op
-                if "max" == method:
-                    processed_img = output
-                elif "mean" == method:
-                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                    processed_img = output / avg[..., None, None, None]
-                elif "sum" == method:
-                    avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                    processed_img = output / avg[..., None, None, None]
+                processed_img = output
+                # method = model.op
+                # if "max" == method:
+                #     processed_img = output
+                # elif "mean" == method:
+                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                #     processed_img = output / avg[..., None, None, None]
+                # elif "sum" == method:
+                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
+                #     processed_img = output / avg[..., None, None, None]
                 return processed_img
 
         case _:
             raise ValueError(
                 f"{model_name} not implemented. Feel free to add it inside models/__init__.py."
             )
+
+    if not load_lora and checkpoint is not None:
+        model = __load_model(model, f"{checkpoint}/model.safetensors", load_lora)
+
+    if lora:
+        target_modules = (
+            lora_target_modules[0]
+            if len(lora_target_modules) == 1 and lora_target_modules[0] == "all-linear"
+            else lora_target_modules
+        )
+        lora_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            target_modules=target_modules,
+            bias=lora_bias,
+        )
+        model = get_peft_model(model, peft_config=lora_config)
+
+        if load_lora and checkpoint is not None:
+            model = __load_model(model, f"{checkpoint}/model.safetensors", lora)
 
     return model, preprocess_fn, postprocess_fn
