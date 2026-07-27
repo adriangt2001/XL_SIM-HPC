@@ -24,7 +24,7 @@ def _prepare_biosr(data_path: Path, test_size: float, first_crop: int):
     data_path = data_path / Path("data")
 
     datasets = []
-    for split in data_path.iterdir():
+    for split in sorted(data_path.iterdir()):
         ds = load_from_disk(str(split))
         ds = ds.add_column("class", [split.name] * len(ds))
         datasets.append(ds)
