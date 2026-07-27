@@ -1,0 +1,22 @@
+project: "XL-SIM"
+program: src.train.train
+method: grid # grid/random
+
+metric:
+  name: val/psnr
+  goal: maximize
+
+parameters:
+  loss_name:
+    values:
+      - "l1"
+      - "wl1"
+  config:
+    value: "configs/train/swin2sr_biosr_ft.yaml"
+
+command:
+  - accelerate
+  - launch
+  - -m
+  - ${program}
+  - ${args}
