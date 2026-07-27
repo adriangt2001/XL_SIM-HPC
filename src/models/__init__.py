@@ -5,6 +5,7 @@ from transformers.modeling_outputs import ImageSuperResolutionOutput
 from peft import LoraConfig, get_peft_model
 from .basic import BasicOP
 from .gsasr.gsasr import GSASR
+from .burstormer import Burstormer
 from .richardson import RichardsonLucy
 
 __all__ = ["get_model"]
@@ -67,6 +68,15 @@ def get_model(
                     "pixel_values": kwargs["pixel_values"],
                     "upscale": kwargs["upscale"],
                 }
+
+            def postprocess_fn(output: torch.Tensor):
+                return output
+
+        case "Burstormer":
+            model = Burstormer.from_json_file(model_config)
+
+            def preprocess_fn(**kwargs):
+                return {"pixel_values": kwargs["pixel_values"]}
 
             def postprocess_fn(output: torch.Tensor):
                 return output

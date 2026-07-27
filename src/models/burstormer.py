@@ -405,11 +405,11 @@ class adapt_burst_pooling(nn.Module):
 
 
 class Burstormer(BaseModel):
-    def __init__(self, num_features=48, burst_size=8, reduction=8, bias=False):
+    def __init__(self, input_channels = 1, num_features=48, burst_size=8, reduction=8, bias=False):
         super().__init__()
 
         self.conv1 = nn.Sequential(
-            nn.Conv2d(4, num_features, kernel_size=3, padding=1, bias=bias)
+            nn.Conv2d(input_channels, num_features, kernel_size=3, padding=1, bias=bias)
         )
         self.align = EDA(num_features)
 
