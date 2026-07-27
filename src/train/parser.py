@@ -103,6 +103,7 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
     parser.add_argument(
         "--loss_name", type=str, default="l1", help="Loss to use during training"
     )
+    parser.add_argument("--loss_weights", type=float, nargs="+", default=[1.0], help="Weights for the loss terms (used when the loss has >1 terms)")
     parser.add_argument(
         "--max_grad_norm",
         type=float,

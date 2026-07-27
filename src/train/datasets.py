@@ -1,19 +1,26 @@
 import os
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from datasets import Dataset, concatenate_datasets, load_from_disk
 from torch.utils.data import DataLoader, DistributedSampler
+from torchvision.transforms import (
+    Compose,
+    RandomHorizontalFlip,
+    RandomRotation,
+    RandomVerticalFlip,
+)
 from torchvision.transforms.functional import to_tensor
 
 from src.utils.preprocessing import crop_pil
-from PIL.TiffImagePlugin import TiffImageFile
-import numpy as np
 
 
 def _prepare_biosr(data_path: Path, test_size: float, first_crop: int):
-    assert test_size < 0.5, f"BioSR dataset assumes validation and test size are equal. Current test_size is {test_size}. Make sure it is <0.5."
+    assert test_size < 0.5, (
+        f"BioSR dataset assumes validation and test size are equal. Current test_size is {test_size}. Make sure it is <0.5."
+    )
     data_path = data_path / Path("data")
 
     datasets = []
@@ -36,6 +43,13 @@ def _prepare_biosr(data_path: Path, test_size: float, first_crop: int):
     )
     valid_dataset = splits2["train"]
     test_dataset = splits2["test"]
+    transforms = Compose(
+        [
+            RandomRotation(degrees=180),
+            RandomHorizontalFlip(p=0.5),
+            RandomVerticalFlip(p=0.5),
+        ]
+    )
 
     def transform_train(sample):
         hrs = []
@@ -43,9 +57,12 @@ def _prepare_biosr(data_path: Path, test_size: float, first_crop: int):
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx]
-            hr, _, pad = crop_pil(hr, first_crop, mode='random')
+            hr = transforms(hr)
+
+            hr, _, pad = crop_pil(hr, first_crop, mode="random")
             hr = np.array(hr) / 65565
             hr = torch.from_numpy(hr)[None, ...]
+
             hrs.append(hr)
             padding.append(torch.as_tensor(pad))
 
@@ -57,7 +74,7 @@ def _prepare_biosr(data_path: Path, test_size: float, first_crop: int):
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx]
-            hr, _, pad = crop_pil(hr, first_crop, mode='center')
+            hr, _, pad = crop_pil(hr, first_crop, mode="center")
             hr = np.array(hr) / 65565
             hr = torch.from_numpy(hr)[None, ...]
             hrs.append(hr)
@@ -84,6 +101,13 @@ def _prepare_lsdir(data_path: Path, test_size: float, first_crop: int, split: st
     splits = dataset.train_test_split(test_size=test_size, shuffle=False)
     train_dataset = splits["train"]
     valid_dataset = splits["test"]
+    transforms = Compose(
+        [
+            RandomRotation(degrees=180),
+            RandomHorizontalFlip(p=0.5),
+            RandomVerticalFlip(p=0.5),
+        ]
+    )
 
     def transform_train(sample):
         hrs = []
@@ -91,8 +115,12 @@ def _prepare_lsdir(data_path: Path, test_size: float, first_crop: int, split: st
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx].convert("L")
-            hr, _, pad = crop_pil(hr, first_crop, mode='random')
-            hrs.append(to_tensor(hr))
+            hr = transforms(hr)
+
+            hr, _, pad = crop_pil(hr, first_crop, mode="random")
+            hr = to_tensor(hr)
+
+            hrs.append(hr)
             padding.append(torch.as_tensor(pad))
 
         return {"hr": hrs, "padding": padding}
@@ -103,7 +131,7 @@ def _prepare_lsdir(data_path: Path, test_size: float, first_crop: int, split: st
 
         for idx in range(len(sample["hr"])):
             hr = sample["hr"][idx].convert("L")
-            hr, _, pad = crop_pil(hr, first_crop, mode='center')
+            hr, _, pad = crop_pil(hr, first_crop, mode="center")
             hrs.append(to_tensor(hr))
             padding.append(torch.as_tensor(pad))
 

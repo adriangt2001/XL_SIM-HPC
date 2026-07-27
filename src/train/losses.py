@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 import torch
 import torch.nn.functional as F
@@ -23,7 +23,7 @@ def _sparsity_loss(input: torch.Tensor, target: torch.Tensor):
     return torch.mean(torch.abs(input))
 
 def _weighted_l1_loss(input: torch.Tensor, target: torch.Tensor):
-    weight_map = target + 0.01
+    weight_map = target + 0.001
     weight_map = weight_map / weight_map.max().values
     loss = l1_loss(input, target, reduction="none")
     weighted_loss = loss * weight_map
