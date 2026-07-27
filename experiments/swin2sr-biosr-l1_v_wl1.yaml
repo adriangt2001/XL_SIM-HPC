@@ -3,7 +3,7 @@ program: src.train.train
 method: grid # grid/random
 
 metric:
-  name: val/psnr
+  name: valid/psnr
   goal: maximize
 
 parameters:
