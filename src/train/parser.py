@@ -104,6 +104,10 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         "--loss_name", type=str, default="l1", help="Loss to use during training"
     )
     parser.add_argument("--loss_weights", type=float, nargs="+", default=[1.0], help="Weights for the loss terms (used when the loss has >1 terms)")
+    parser.add_argument("--l1_weight", type=float, default=1.0, help="Weight of L1 loss in the final loss.")
+    parser.add_argument("--wl1_weight", type=float, default=0.0, help="Weight of Weighted L1 loss in the final loss.")
+    parser.add_argument("--continuity_weight", type=float, default=0.0, help="Weight of Continuity loss in the final loss.")
+    parser.add_argument("--sparsity_weight", type=float, default=0.0, help="Weight of Sparsity loss in the final loss.")
     parser.add_argument(
         "--max_grad_norm",
         type=float,

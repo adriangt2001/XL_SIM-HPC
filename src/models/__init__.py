@@ -1,11 +1,13 @@
 import torch
+from peft import LoraConfig, get_peft_model
 from safetensors.torch import load_file, load_model
 from transformers import Swin2SRConfig, Swin2SRForImageSuperResolution
 from transformers.modeling_outputs import ImageSuperResolutionOutput
-from peft import LoraConfig, get_peft_model
+
 from .basic import BasicOP
-from .gsasr.gsasr import GSASR
 from .burstormer import Burstormer
+from .gsasr.gsasr import GSASR
+from .hat import HAT
 from .richardson import RichardsonLucy
 
 __all__ = ["get_model"]
@@ -43,11 +45,11 @@ def get_model(
     checkpoint: str,
     load_lora: bool,
     lora: bool = False,
-    lora_r: int = None,
-    lora_alpha: int = None,
-    lora_dropout: float = None,
-    lora_target_modules: list[str] = None,
-    lora_bias: str = None,
+    lora_r: int | None = None,
+    lora_alpha: int | None = None,
+    lora_dropout: float | None = None,
+    lora_target_modules: list[str] | None = None,
+    lora_bias: str | None = None,
 ):
     match model_name:
         case "Swin2SR":
@@ -74,6 +76,15 @@ def get_model(
 
         case "Burstormer":
             model = Burstormer.from_json_file(model_config)
+
+            def preprocess_fn(**kwargs):
+                return {"pixel_values": kwargs["pixel_values"]}
+
+            def postprocess_fn(output: torch.Tensor):
+                return output
+
+        case "HAT":
+            model = HAT.from_json_file(model_config)
 
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"]}

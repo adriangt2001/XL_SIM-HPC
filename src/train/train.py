@@ -42,7 +42,12 @@ def main(args: Namespace):
         decay_iterations=args.decay_iterations,
         decay_factor=args.decay_factor,
     )
-    loss = get_loss(args.loss_name)
+    loss = get_loss(
+        args.l1_weight,
+        args.wl1_weight,
+        args.continuity_weight,
+        args.sparsity_weight,
+    )
 
     trainer = Trainer(
         model,
