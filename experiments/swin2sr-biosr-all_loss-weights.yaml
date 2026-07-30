@@ -1,0 +1,34 @@
+project: "XL-SIM"
+program: src.train.train
+method: bayes # grid/random
+run_cap: 15
+
+metric:
+  name: valid/psnr
+  goal: maximize
+
+parameters:
+  l1_weight:
+    distribution: uniform
+    min: 0.1
+    max: 1.0
+  continuity_weight:
+    distribution: log_uniform_values
+    min: 0.001
+    max: 0.5
+  sparsity_weight:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.1
+  
+  wl1_weight:
+    value: 0.0
+  config:
+    value: "configs/train/swin2sr_biosr_ft.yaml"
+
+command:
+  - accelerate
+  - launch
+  - -m
+  - ${program}
+  - ${args}

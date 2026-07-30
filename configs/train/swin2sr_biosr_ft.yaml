@@ -13,13 +13,13 @@ first_crop: 1024
 second_crop: 64
 
 # Training
-num_iterations: 25000
+num_iterations: 24000
 optimizer: adamw
 lr: 1e-4
 scheduler: cosine
 warmup_iterations: 500
 warmup_lr: 1e-7
-decay_iterations: [25000]
+decay_iterations: [24000]
 decay_factor: 1e-7
 max_grad_norm: 1.0
 valid_freq: 2000
