@@ -1,0 +1,13 @@
+{
+    "in_chans": 25,
+    "out_chans": 1,
+    "embed_dim": 180,
+    "depths": [6, 6, 6, 6],
+    "num_heads": [6, 6, 6, 6],
+    "window_size": 16,
+    "conv_scale": 0.01,
+    "squeeze_factor": 3,
+    "overlap_ratio": 0.5,
+    "upscale": 2,
+    "upsampler": "pixelshuffle"
+}

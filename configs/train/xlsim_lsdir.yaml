@@ -1,0 +1,32 @@
+# Model configuration
+model_name: XLSIM
+model_config: configs/models/xlsim.json
+upscale: 2
+
+# Dataset, preprocessing and postprocessing
+dataset: data/LSDIR
+test_size: 0.01
+batch_size: 4
+num_workers: 8
+first_crop: 1024
+second_crop: 64
+
+# Training
+num_iterations: 500000
+optimizer: adamw
+lr: 2e-4 # For a total batch size of 16
+scheduler: cosine
+warmup_iterations: 10000
+warmup_lr: 1e-7
+decay_iterations: [500000]
+decay_factor: 1e-7
+max_grad_norm: 1.0
+valid_freq: 10000
+save_freq: 10000
+output_dir: runs
+report_scalar_freq: 100
+report_image_freq: 10000
+
+# Simulator
+microscope_config: configs/simulator/default_microscope.yaml
+noise_config: configs/simulator/default_noise.yaml

@@ -1,0 +1,23 @@
+# Models configs
+main_model_name: GSASR
+main_model_config: configs/models/gsasr.json
+checkpoint: runs/GSASR/run_20260709_111919/best_psnr
+
+comparison_model_names: [Basic]
+comparison_model_configs: [configs/models/rlX2_max.json]
+comparison_checkpoints: [""]
+
+upscale: 2
+
+# Dataset, preprocessing and postprocessing
+dataset: data/LSDIR
+split: validation
+test_size: 0.99
+batch_size: 1
+num_workers: 8
+first_crop: 1024
+second_crop: 504
+
+# Simulator
+microscope_config: configs/simulator/default_microscope.yaml
+noise_config: configs/simulator/no_noise.yaml

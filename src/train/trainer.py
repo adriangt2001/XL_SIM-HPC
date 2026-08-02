@@ -40,6 +40,7 @@ class Trainer:
         log_freq: int,
         image_log_freq: int,
         max_grad_norm: float,
+        patience: int,
         checkpoint: str | None = None,
     ):
         ddp_kwargs = DistributedDataParallelKwargs(broadcast_buffers=False)
@@ -99,6 +100,7 @@ class Trainer:
         self.log_freq = log_freq
         self.image_log_freq = image_log_freq
         self.max_grad_norm = max_grad_norm
+        self.patience = patience
         self.simulator = SimulatorPipeline.from_file(
             microscope_filename, noise_filename
         ).to(device=self.device)
@@ -110,6 +112,18 @@ class Trainer:
         self.checkpoint = None
         if checkpoint is not None:
             self.checkpoint = Path(checkpoint)
+
+        if self.accelerator.is_main_process:
+            total_parameters = sum(p.numel() for p in self.model.parameters())
+            trainable_parameters = sum(
+                p.numel() for p in self.model.parameters() if p.requires_grad
+            )
+            wandb.config.update(
+                {
+                    "total_parameters": total_parameters,
+                    "trainable_parameters": trainable_parameters,
+                }
+            )
 
     def __generate_run_path(self, output_dir, model_name):
         model_folder = Path(output_dir) / Path(model_name)
@@ -138,7 +152,7 @@ class Trainer:
                 pair_image=targets,
                 pair_scale_factor=self.upscale,
                 offset=target_padding.max(dim=0).values // (self.upscale),
-                mode='random',
+                mode="random",
             )
 
             preprocessed_batch = self.preprocess_fn(
@@ -167,13 +181,14 @@ class Trainer:
     def train(self):
         step = 0
         epoch = 0
+        patience = 0
         best_psnr = {"step": 0, "psnr": 0, "ssim": 0}
         best_ssim = {"step": 0, "psnr": 0, "ssim": 0}
         total_loss = 0
         self.model.train()
 
         if self.checkpoint is not None:
-            step, epoch, best_psnr, best_ssim = self.load_state()
+            step, epoch, best_psnr, best_ssim, patience = self.load_state()
 
         pbar = tqdm(
             desc="Training progress",
@@ -211,11 +226,14 @@ class Trainer:
                         split="valid",
                     )
 
+                    patience += 1
+
                     if metrics["psnr"] > best_psnr["psnr"]:
                         best_psnr["step"] = step
                         best_psnr["psnr"] = metrics["psnr"]
                         best_psnr["ssim"] = metrics["ssim"]
                         self.save_model("best_psnr")
+                        patience = 0
 
                     if metrics["ssim"] > best_ssim["ssim"]:
                         best_ssim["step"] = step
@@ -224,15 +242,15 @@ class Trainer:
                         self.save_model("best_ssim")
 
                 if step % self.save_freq == 0:
-                    self.save_state(step, epoch, best_psnr, best_ssim)
+                    self.save_state(step, epoch, best_psnr, best_ssim, patience)
 
-                if step >= self.max_iters:
+                if step >= self.max_iters or patience > self.patience:
                     break
 
             epoch += 1
         self.accelerator.end_training()
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def valid_step(self, loader: torch.utils.data.DataLoader):
         self.model.eval()
 
@@ -243,17 +261,17 @@ class Trainer:
         count = 0
         for batch in tqdm(loader, desc="Valid progress", main_process_only=True):
             targets = batch["hr"]
-            # target_padding = batch["padding"]
+            target_padding = batch["padding"]
 
             pixel_values, calibs = self.simulator(targets)
-            # pixel_values, targets, _ = crop_tensor(
-            #     pixel_values,
-            #     self.second_crop_size,
-            #     pair_image=targets,
-            #     pair_scale_factor=self.upscale,
-            #     offset=target_padding.max(dim=0).values // (self.upscale),
-            #     random='center',
-            # )
+            pixel_values, targets, _ = crop_tensor(
+                pixel_values,
+                self.second_crop_size,
+                pair_image=targets,
+                pair_scale_factor=self.upscale,
+                offset=target_padding.max(dim=0).values // (self.upscale),
+                mode='center',
+            )
             preprocessed_batch = self.preprocess_fn(
                 pixel_values=pixel_values, calibs=calibs, upscale=self.upscale
             )
@@ -295,11 +313,12 @@ class Trainer:
         epoch: int,
         best_psnr: dict[str, int],
         best_ssim: dict[str, int],
+        patience: int
     ):
         self.accelerator.save_state(self.output_dir)
         checkpoint_path = self.output_dir / Path("checkpoints")
         checkpoint_path = sorted(
-            list(checkpoint_path.iterdir()), key=lambda x: int(x.name.split("_")[-1])
+            checkpoint_path.iterdir(), key=lambda x: int(x.name.split("_")[-1])
         )[-1]
         torch.save(
             {
@@ -307,6 +326,7 @@ class Trainer:
                 "epoch": epoch,
                 "best_psnr": best_psnr,
                 "best_ssim": best_ssim,
+                "patience": patience,
             },
             checkpoint_path / Path("train_info.pt"),
         )
@@ -318,7 +338,8 @@ class Trainer:
         epoch = ckpt["epoch"]
         best_psnr = ckpt["best_psnr"]
         best_ssim = ckpt["best_ssim"]
-        return step, epoch, best_psnr, best_ssim
+        patience = ckpt["patience"]
+        return step, epoch, best_psnr, best_ssim, patience
 
     def log_train(self, loss: int, lr: float, step: int):
         self.accelerator.log(
@@ -373,8 +394,8 @@ class Trainer:
 
 
 if "__main__" == __name__:
-    from src.train.datasets import get_data
     from src.models import get_model
+    from src.train.datasets import get_data
     from src.train.parser import parse_arguments_train
 
     args = parse_arguments_train(is_test=True)

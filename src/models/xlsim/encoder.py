@@ -1,28 +1,6 @@
 import torch
 from torch import nn
 
-# def default_conv(in_channels, out_channels, kernel_size, bias=True):
-#     return nn.Conv2d(
-#         in_channels, out_channels, kernel_size, padding=(kernel_size // 2), bias=bias
-#     )
-
-
-# class MeanShift(nn.Conv2d):
-#     def __init__(
-#         self,
-#         rgb_range,
-#         rgb_mean=(0.4488, 0.4371, 0.4040),
-#         rgb_std=(1.0, 1.0, 1.0),
-#         sign=-1,
-#     ):
-
-#         super().__init__(3, 3, kernel_size=1)
-#         std = torch.Tensor(rgb_std)
-#         self.weight.data = torch.eye(3).view(3, 3, 1, 1) / std.view(3, 1, 1, 1)
-#         self.bias.data = sign * rgb_range * torch.Tensor(rgb_mean) / std
-#         for p in self.parameters():
-#             p.requires_grad = False
-
 
 class LayerNorm2d(nn.Module):
     def __init__(self, channels: int, eps: float = 1e-6):
@@ -102,7 +80,7 @@ class EDSR(nn.Module):
         is_5d = x.ndim == 5
         if is_5d:
             B, N, C, H, W = x.shape
-            x = x.view(B * N, C, H, W)
+            x = x.reshape(B * N, C, H, W).to(memory_format=torch.channels_last)
 
         x = self.head(x)
         res = self.body(x)

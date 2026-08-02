@@ -9,11 +9,9 @@ from .burstormer import Burstormer
 from .gsasr.gsasr import GSASR
 from .hat import HAT
 from .richardson import RichardsonLucy
+from .xlsim import XLSIM
 
 __all__ = ["get_model"]
-
-# TODO: Add a diffusion method to train
-# TODO: Fix RichardsonLucy and Basic method's contrast for Sum and Mean approach
 
 
 def __load_model(model: torch.nn.Module, checkpoint_path: str, lora: bool):
@@ -92,6 +90,18 @@ def get_model(
             def postprocess_fn(output: torch.Tensor):
                 return output
 
+        case "XLSIM":
+            model = XLSIM.from_json_file(model_config)
+
+            def preprocess_fn(**kwargs):
+                pixel_values: torch.Tensor = kwargs["pixel_values"]
+                B, S, H, W = pixel_values.shape
+                pixel_values = pixel_values.reshape(B, S, 1, H, W)
+                return {"pixel_values": pixel_values}
+
+            def postprocess_fn(output: torch.Tensor):
+                return output
+            
         case "RL":
             model = RichardsonLucy.from_json_file(model_config)
 

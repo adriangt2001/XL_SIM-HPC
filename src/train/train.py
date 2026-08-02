@@ -9,6 +9,20 @@ from .parser import parse_arguments_train
 from .trainer import Trainer
 from .utils import get_optimizer, get_scheduler
 
+def convert_memory_format(model: torch.nn.Module):
+    for param in model.parameters():
+        if param.ndim == 4:
+            param.data = param.data.to(memory_format=torch.channels_last)
+        elif param.ndim == 5:
+            param.data = param.data.to(memory_format=torch.channels_last_3d)
+
+    for buffer in model.buffers():
+        if buffer.ndim == 4:
+            buffer.data = buffer.data.to(memory_format=torch.channels_last)
+        elif buffer.ndim == 5:
+            buffer.data = buffer.data.to(memory_format=torch.channels_last_3d)
+    
+    return model
 
 def main(args: Namespace):
     model, preprocess_fn, postprocess_fn = get_model(
@@ -23,7 +37,7 @@ def main(args: Namespace):
         lora_target_modules=args.lora_target_modules,
         lora_bias=args.lora_bias,
     )
-    model = model.to(memory_format=torch.channels_last)
+    model = convert_memory_format(model)
 
     train_loader, valid_loader, _ = get_data(
         args.dataset,
@@ -73,6 +87,7 @@ def main(args: Namespace):
         args.report_scalar_freq,
         args.report_image_freq,
         args.max_grad_norm,
+        args.patience,
         checkpoint=args.checkpoint,
     )
 

@@ -114,6 +114,7 @@ def parse_arguments_train(is_test: bool = False) -> Namespace:
         default=1.0,
         help="Max gradient norm for clipping",
     )
+    parser.add_argument("--patience", type=int, default=10, help="Validation iterations with no improvement to stop training")
     parser.add_argument(
         "--valid_freq", type=int, default=1000, help="Iterations between validations"
     )
