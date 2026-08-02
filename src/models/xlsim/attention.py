@@ -9,13 +9,6 @@ from torch import nn
 from torch.nn.init import trunc_normal_
 
 
-def to_2tuple(x):
-    """Converts a scalar or sequence to a 2-tuple."""
-    if isinstance(x, (list, tuple)):
-        return tuple(x)
-    return (x, x)
-
-
 def drop_path(x, drop_prob: float = 0.0, training: bool = False):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
 
@@ -39,22 +32,18 @@ class DropPath(nn.Module):
     From: https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers/drop.py
     """
 
-    def __init__(self, drop_prob=None):
+    def __init__(self, drop_prob: float = 0.0):
         super().__init__()
         self.drop_prob = drop_prob
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return drop_path(x, self.drop_prob, self.training)
 
 
 class ChannelAttention(nn.Module):
-    """Channel attention used in RCAN.
-    Args:
-        num_feat (int): Channel number of intermediate features.
-        squeeze_factor (int): Channel squeeze factor. Default: 16.
-    """
+    """Channel attention used in RCAN."""
 
-    def __init__(self, num_feat, squeeze_factor=16):
+    def __init__(self, num_feat: int, squeeze_factor: int = 16):
         super().__init__()
         self.attention = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
@@ -64,13 +53,15 @@ class ChannelAttention(nn.Module):
             nn.Sigmoid(),
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         y = self.attention(x)
         return x * y
 
 
 class CAB(nn.Module):
-    def __init__(self, num_feat, compress_ratio=3, squeeze_factor=30):
+    def __init__(
+        self, num_feat: int, compress_ratio: int = 3, squeeze_factor: int = 30
+    ):
         super().__init__()
 
         self.cab = nn.Sequential(
@@ -80,18 +71,18 @@ class CAB(nn.Module):
             ChannelAttention(num_feat, squeeze_factor),
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return self.cab(x)
 
 
 class Mlp(nn.Module):
     def __init__(
         self,
-        in_features,
-        hidden_features=None,
-        out_features=None,
-        act_layer=nn.GELU,
-        drop=0.0,
+        in_features: int,
+        hidden_features: int | None = None,
+        out_features: int | None = None,
+        act_layer: type = nn.GELU,
+        drop: float = 0.0,
     ):
         super().__init__()
         out_features = out_features or in_features
@@ -101,7 +92,7 @@ class Mlp(nn.Module):
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         x = self.fc1(x)
         x = self.act(x)
         x = self.drop(x)
@@ -110,7 +101,7 @@ class Mlp(nn.Module):
         return x
 
 
-def window_partition(x, window_size):
+def window_partition(x: torch.Tensor, window_size: int):
     """
     Args:
         x: (b, h, w, c)
@@ -127,7 +118,7 @@ def window_partition(x, window_size):
     return windows
 
 
-def window_reverse(windows, window_size, h, w):
+def window_reverse(windows: torch.Tensor, window_size: int, h: int, w: int):
     """
     Args:
         windows: (num_windows*b, window_size, window_size, c)
@@ -149,26 +140,17 @@ def window_reverse(windows, window_size, h, w):
 class WindowAttention(nn.Module):
     r"""Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
-
-    Args:
-        dim (int): Number of input channels.
-        window_size (tuple[int]): The height and width of the window.
-        num_heads (int): Number of attention heads.
-        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
-        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
-        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
-        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
     def __init__(
         self,
-        dim,
-        window_size,
-        num_heads,
-        qkv_bias=True,
-        qk_scale=None,
-        attn_drop=0.0,
-        proj_drop=0.0,
+        dim: int,
+        window_size: tuple[int, int],
+        num_heads: int,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
     ):
 
         super().__init__()
@@ -182,24 +164,24 @@ class WindowAttention(nn.Module):
         self.relative_position_bias_table = nn.Parameter(
             torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads)
         )  # 2*Wh-1 * 2*Ww-1, nH
+        trunc_normal_(self.relative_position_bias_table, std=0.02)
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
-
         self.proj_drop = nn.Dropout(proj_drop)
-
-        trunc_normal_(self.relative_position_bias_table, std=0.02)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x, rpi, mask=None):
+    def forward(
+        self, x: torch.Tensor, rpi: torch.Tensor, mask: torch.Tensor | None = None
+    ):
         """
         Args:
             x: input features with shape of (num_windows*b, n, c)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         b_, n, c = x.shape
-        qkv = (
+        qkv: torch.Tensor = (
             self.qkv(x)
             .reshape(b_, n, 3, self.num_heads, c // self.num_heads)
             .permute(2, 0, 3, 1, 4)
@@ -229,10 +211,8 @@ class WindowAttention(nn.Module):
                 1
             ).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, n, n)
-            attn = self.softmax(attn)
-        else:
-            attn = self.softmax(attn)
 
+        attn: torch.Tensor = self.softmax(attn)
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(b_, n, c)
@@ -242,62 +222,43 @@ class WindowAttention(nn.Module):
 
 
 class HAB(nn.Module):
-    r"""Hybrid Attention Block.
-
-    Args:
-        dim (int): Number of input channels.
-        input_resolution (tuple[int]): Input resolution.
-        num_heads (int): Number of attention heads.
-        window_size (int): Window size.
-        shift_size (int): Shift size for SW-MSA.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-        qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
-        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
-        drop (float, optional): Dropout rate. Default: 0.0
-        attn_drop (float, optional): Attention dropout rate. Default: 0.0
-        drop_path (float, optional): Stochastic depth rate. Default: 0.0
-        act_layer (nn.Module, optional): Activation layer. Default: nn.GELU
-        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
-    """
+    r"""Hybrid Attention Block."""
 
     def __init__(
         self,
-        dim,
-        input_resolution,
-        num_heads,
-        window_size=7,
-        shift_size=0,
-        compress_ratio=3,
-        squeeze_factor=30,
-        conv_scale=0.01,
-        mlp_ratio=4.0,
-        qkv_bias=True,
-        qk_scale=None,
-        drop=0.0,
-        attn_drop=0.0,
-        drop_path=0.0,
-        act_layer=nn.GELU,
-        norm_layer=nn.LayerNorm,
+        dim: int,
+        num_heads: int,
+        window_size: int = 7,
+        shift_size: int = 0,
+        compress_ratio: int = 3,
+        squeeze_factor: int = 30,
+        conv_scale: float = 0.01,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        drop: float = 0.0,
+        attn_drop: float = 0.0,
+        drop_path: float = 0.0,
+        act_layer: type = nn.GELU,
+        norm_layer: type = nn.LayerNorm,
     ):
         super().__init__()
         self.dim = dim
-        self.input_resolution = input_resolution
         self.num_heads = num_heads
         self.window_size = window_size
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
-        if min(self.input_resolution) <= self.window_size:
-            # if window size is larger than input resolution, we don't partition windows
-            self.shift_size = 0
-            self.window_size = min(self.input_resolution)
+        self.conv_scale = conv_scale
+
         assert 0 <= self.shift_size < self.window_size, (
             "shift_size must in 0-window_size"
         )
 
         self.norm1 = norm_layer(dim)
+
         self.attn = WindowAttention(
-            dim,
-            window_size=to_2tuple(self.window_size),
+            dim=dim,
+            window_size=(window_size, window_size),
             num_heads=num_heads,
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
@@ -305,7 +266,6 @@ class HAB(nn.Module):
             proj_drop=drop,
         )
 
-        self.conv_scale = conv_scale
         self.conv_block = CAB(
             num_feat=dim, compress_ratio=compress_ratio, squeeze_factor=squeeze_factor
         )
@@ -320,7 +280,13 @@ class HAB(nn.Module):
             drop=drop,
         )
 
-    def forward(self, x, x_size, rpi_sa, attn_mask):
+    def forward(
+        self,
+        x: torch.Tensor,
+        x_size: tuple[int, int],
+        rpi_sa: torch.Tensor,
+        attn_mask: torch.Tensor | None = None,
+    ):
         h, w = x_size
         b, _, c = x.shape
         # assert seq_len == h * w, "input feature has wrong size"
@@ -338,9 +304,10 @@ class HAB(nn.Module):
             shifted_x = torch.roll(
                 x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2)
             )
+            mask = attn_mask
         else:
             shifted_x = x
-            attn_mask = None
+            mask = None
 
         # partition windows
         x_windows = window_partition(
@@ -351,7 +318,7 @@ class HAB(nn.Module):
         )  # nw*b, window_size*window_size, c
 
         # W-MSA/SW-MSA (to be compatible for testing on images whose shapes are the multiple of window size
-        attn_windows = self.attn(x_windows, rpi=rpi_sa, mask=attn_mask)
+        attn_windows = self.attn(x_windows, rpi=rpi_sa, mask=mask)
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, c)
@@ -373,65 +340,23 @@ class HAB(nn.Module):
         return x
 
 
-class PatchMerging(nn.Module):
-    r"""Patch Merging Layer.
-
-    Args:
-        input_resolution (tuple[int]): Resolution of input feature.
-        dim (int): Number of input channels.
-        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
-    """
-
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
-        super().__init__()
-        self.input_resolution = input_resolution
-        self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
-        self.norm = norm_layer(4 * dim)
-
-    def forward(self, x):
-        """
-        x: b, h*w, c
-        """
-        h, w = self.input_resolution
-        b, seq_len, c = x.shape
-        assert seq_len == h * w, "input feature has wrong size"
-        assert h % 2 == 0 and w % 2 == 0, f"x size ({h}*{w}) are not even."
-
-        x = x.view(b, h, w, c)
-
-        x0 = x[:, 0::2, 0::2, :]  # b h/2 w/2 c
-        x1 = x[:, 1::2, 0::2, :]  # b h/2 w/2 c
-        x2 = x[:, 0::2, 1::2, :]  # b h/2 w/2 c
-        x3 = x[:, 1::2, 1::2, :]  # b h/2 w/2 c
-        x = torch.cat([x0, x1, x2, x3], -1)  # b h/2 w/2 4*c
-        x = x.view(b, -1, 4 * c)  # b h/2*w/2 4*c
-
-        x = self.norm(x)
-        x = self.reduction(x)
-
-        return x
-
-
 class OCAB(nn.Module):
     # overlapping cross-attention block
 
     def __init__(
         self,
-        dim,
-        input_resolution,
-        window_size,
-        overlap_ratio,
-        num_heads,
-        qkv_bias=True,
-        qk_scale=None,
-        mlp_ratio=2,
-        norm_layer=nn.LayerNorm,
+        dim: int,
+        window_size: int,
+        overlap_ratio: float,
+        num_heads: int,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        mlp_ratio: float = 2.0,
+        norm_layer: type = nn.LayerNorm,
     ):
 
         super().__init__()
         self.dim = dim
-        self.input_resolution = input_resolution
         self.window_size = window_size
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -440,6 +365,7 @@ class OCAB(nn.Module):
 
         self.norm1 = norm_layer(dim)
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+
         self.unfold = nn.Unfold(
             kernel_size=(self.overlap_win_size, self.overlap_win_size),
             stride=window_size,
@@ -466,7 +392,7 @@ class OCAB(nn.Module):
             in_features=dim, hidden_features=mlp_hidden_dim, act_layer=nn.GELU
         )
 
-    def forward(self, x, x_size, rpi):
+    def forward(self, x: torch.Tensor, x_size: tuple[int, int], rpi: torch.Tensor):
         h, w = x_size
         b, _, c = x.shape
 
@@ -487,7 +413,7 @@ class OCAB(nn.Module):
         )  # nw*b, window_size*window_size, c
 
         kv_windows = self.unfold(kv)  # b, c*w*w, nw
-        kv_windows = rearrange(
+        kv_windows = rearrange(  # ?????
             kv_windows,
             "b (nc ch owh oww) nw -> nc (b nw) (owh oww) ch",
             nc=2,
@@ -540,59 +466,36 @@ class OCAB(nn.Module):
 
 
 class AttenBlocks(nn.Module):
-    """A series of attention blocks for one RHAG.
-
-    Args:
-        dim (int): Number of input channels.
-        input_resolution (tuple[int]): Input resolution.
-        depth (int): Number of blocks.
-        num_heads (int): Number of attention heads.
-        window_size (int): Local window size.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-        qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
-        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
-        drop (float, optional): Dropout rate. Default: 0.0
-        attn_drop (float, optional): Attention dropout rate. Default: 0.0
-        drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
-        norm_layer (nn.Module, optional): Normalization layer. Default: nn.LayerNorm
-        downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
-        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
-    """
+    """A series of attention blocks for one RHAG."""
 
     def __init__(
         self,
-        dim,
-        input_resolution,
-        depth,
-        num_heads,
-        window_size,
-        compress_ratio,
-        squeeze_factor,
-        conv_scale,
-        overlap_ratio,
-        mlp_ratio=4.0,
-        qkv_bias=True,
-        qk_scale=None,
-        drop=0.0,
-        attn_drop=0.0,
-        drop_path=0.0,
-        norm_layer=nn.LayerNorm,
-        downsample=None,
-        use_checkpoint=False,
+        dim: int,
+        depth: int,
+        num_heads: int,
+        window_size: int,
+        compress_ratio: int,
+        squeeze_factor: int,
+        conv_scale: float,
+        overlap_ratio: float,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        drop: float = 0.0,
+        attn_drop: float = 0.0,
+        drop_path: float | list[float] = 0.0,
+        norm_layer: type = nn.LayerNorm,
     ):
 
         super().__init__()
         self.dim = dim
-        self.input_resolution = input_resolution
         self.depth = depth
-        self.use_checkpoint = use_checkpoint
 
         # build blocks
         self.blocks = nn.ModuleList(
             [
                 HAB(
                     dim=dim,
-                    input_resolution=input_resolution,
                     num_heads=num_heads,
                     window_size=window_size,
                     shift_size=0 if (i % 2 == 0) else window_size // 2,
@@ -616,7 +519,6 @@ class AttenBlocks(nn.Module):
         # OCAB
         self.overlap_attn = OCAB(
             dim=dim,
-            input_resolution=input_resolution,
             window_size=window_size,
             overlap_ratio=overlap_ratio,
             num_heads=num_heads,
@@ -626,80 +528,45 @@ class AttenBlocks(nn.Module):
             norm_layer=norm_layer,
         )
 
-        # patch merging layer
-        if downsample is not None:
-            self.downsample = downsample(
-                input_resolution, dim=dim, norm_layer=norm_layer
-            )
-        else:
-            self.downsample = None
-
-    def forward(self, x, x_size, params):
+    def forward(
+        self, x: torch.Tensor, x_size: tuple[int, int], params: dict[str, torch.Tensor]
+    ):
         for blk in self.blocks:
             x = blk(x, x_size, params["rpi_sa"], params["attn_mask"])
 
         x = self.overlap_attn(x, x_size, params["rpi_oca"])
 
-        if self.downsample is not None:
-            x = self.downsample(x)
         return x
 
 
 class RHAG(nn.Module):
-    """Residual Hybrid Attention Group (RHAG).
-
-    Args:
-        dim (int): Number of input channels.
-        input_resolution (tuple[int]): Input resolution.
-        depth (int): Number of blocks.
-        num_heads (int): Number of attention heads.
-        window_size (int): Local window size.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-        qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
-        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
-        drop (float, optional): Dropout rate. Default: 0.0
-        attn_drop (float, optional): Attention dropout rate. Default: 0.0
-        drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
-        norm_layer (nn.Module, optional): Normalization layer. Default: nn.LayerNorm
-        downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
-        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
-        img_size: Input image size.
-        patch_size: Patch size.
-        resi_connection: The convolutional block before residual connection.
-    """
+    """Residual Hybrid Attention Group (RHAG)."""
 
     def __init__(
         self,
-        dim,
-        input_resolution,
-        depth,
-        num_heads,
-        window_size,
-        compress_ratio,
-        squeeze_factor,
-        conv_scale,
-        overlap_ratio,
-        mlp_ratio=4.0,
-        qkv_bias=True,
-        qk_scale=None,
-        drop=0.0,
-        attn_drop=0.0,
-        drop_path=0.0,
-        norm_layer=nn.LayerNorm,
-        downsample=None,
-        use_checkpoint=False,
-        img_size=224,
-        patch_size=4,
-        resi_connection="1conv",
+        dim: int,
+        depth: int,
+        num_heads: int,
+        window_size: int,
+        compress_ratio: int,
+        squeeze_factor: int,
+        conv_scale: float,
+        overlap_ratio: float,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        drop: float = 0.0,
+        attn_drop: float = 0.0,
+        drop_path: float | list[float] = 0.0,
+        norm_layer: type = nn.LayerNorm,
+        resi_connection: str = "1conv",
     ):
         super().__init__()
 
         self.dim = dim
-        self.input_resolution = input_resolution
 
         self.residual_group = AttenBlocks(
             dim=dim,
-            input_resolution=input_resolution,
             depth=depth,
             num_heads=num_heads,
             window_size=window_size,
@@ -714,8 +581,6 @@ class RHAG(nn.Module):
             attn_drop=attn_drop,
             drop_path=drop_path,
             norm_layer=norm_layer,
-            downsample=downsample,
-            use_checkpoint=use_checkpoint,
         )
 
         if resi_connection == "1conv":
@@ -723,110 +588,17 @@ class RHAG(nn.Module):
         elif resi_connection == "identity":
             self.conv = nn.Identity()
 
-        self.patch_embed = PatchEmbed(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=0,
-            embed_dim=dim,
-            norm_layer=None,
-        )
-
-        self.patch_unembed = PatchUnEmbed(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=0,
-            embed_dim=dim,
-            norm_layer=None,
-        )
-
-    def forward(self, x, x_size, params):
-        return (
-            self.patch_embed(
-                self.conv(
-                    self.patch_unembed(self.residual_group(x, x_size, params), x_size)
-                )
-            )
-            + x
-        )
-
-
-class PatchEmbed(nn.Module):
-    r"""Image to Patch Embedding
-
-    Args:
-        img_size (int): Image size.  Default: 224.
-        patch_size (int): Patch token size. Default: 4.
-        in_chans (int): Number of input image channels. Default: 3.
-        embed_dim (int): Number of linear projection output channels. Default: 96.
-        norm_layer (nn.Module, optional): Normalization layer. Default: None
-    """
-
-    def __init__(
-        self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None
+    def forward(
+        self, x: torch.Tensor, x_size: tuple[int, int], params: dict[str, torch.Tensor]
     ):
-        super().__init__()
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        patches_resolution = [
-            img_size[0] // patch_size[0],
-            img_size[1] // patch_size[1],
-        ]
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.patches_resolution = patches_resolution
-        self.num_patches = patches_resolution[0] * patches_resolution[1]
+        B, C, H, W = x.shape
 
-        self.in_chans = in_chans
-        self.embed_dim = embed_dim
+        x_seq = x.flatten(2).transpose(1, 2)
+        out_seq: torch.Tensor = self.residual_group(x_seq, x_size, params)
+        out_2d = out_seq.transpose(1, 2).view(B, C, H, W)
 
-        if norm_layer is not None:
-            self.norm = norm_layer(embed_dim)
-        else:
-            self.norm = None
-
-    def forward(self, x):
-        x = x.flatten(2).transpose(1, 2)  # b Ph*Pw c
-        if self.norm is not None:
-            x = self.norm(x)
-        return x
-
-
-class PatchUnEmbed(nn.Module):
-    r"""Image to Patch Unembedding
-
-    Args:
-        img_size (int): Image size.  Default: 224.
-        patch_size (int): Patch token size. Default: 4.
-        in_chans (int): Number of input image channels. Default: 3.
-        embed_dim (int): Number of linear projection output channels. Default: 96.
-        norm_layer (nn.Module, optional): Normalization layer. Default: None
-    """
-
-    def __init__(
-        self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None
-    ):
-        super().__init__()
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        patches_resolution = [
-            img_size[0] // patch_size[0],
-            img_size[1] // patch_size[1],
-        ]
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.patches_resolution = patches_resolution
-        self.num_patches = patches_resolution[0] * patches_resolution[1]
-
-        self.in_chans = in_chans
-        self.embed_dim = embed_dim
-
-    def forward(self, x, x_size):
-        x = (
-            x.transpose(1, 2)
-            .contiguous()
-            .view(x.shape[0], self.embed_dim, x_size[0], x_size[1])
-        )  # b Ph*Pw c
-        return x
+        out: torch.Tensor = self.conv(out_2d) + x
+        return out
 
 
 class Upsample(nn.Sequential):
@@ -853,80 +625,243 @@ class Upsample(nn.Sequential):
         super().__init__(*m)
 
 
-class HAT(nn.Module):
-    r"""Hybrid Attention Transformer
-        A PyTorch implementation of : `Activating More Pixels in Image Super-Resolution Transformer`.
-        Some codes are based on SwinIR.
-    Args:
-        img_size (int | tuple(int)): Input image size. Default 64
-        patch_size (int | tuple(int)): Patch size. Default: 1
-        in_chans (int): Number of input image channels. Default: 3
-        embed_dim (int): Patch embedding dimension. Default: 96
-        depths (tuple(int)): Depth of each Swin Transformer layer.
-        num_heads (tuple(int)): Number of attention heads in different layers.
-        window_size (int): Window size. Default: 7
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim. Default: 4
-        qkv_bias (bool): If True, add a learnable bias to query, key, value. Default: True
-        qk_scale (float): Override default qk scale of head_dim ** -0.5 if set. Default: None
-        drop_rate (float): Dropout rate. Default: 0
-        attn_drop_rate (float): Attention dropout rate. Default: 0
-        drop_path_rate (float): Stochastic depth rate. Default: 0.1
-        norm_layer (nn.Module): Normalization layer. Default: nn.LayerNorm.
-        ape (bool): If True, add absolute position embedding to the patch embedding. Default: False
-        patch_norm (bool): If True, add normalization after patch embedding. Default: True
-        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
-        upscale: Upscale factor. 2/3/4/8 for image SR, 1 for denoising and compress artifact reduction
-        img_range: Image range. 1. or 255.
-        upsampler: The reconstruction reconstruction module. 'pixelshuffle'/'pixelshuffledirect'/'nearest+conv'/None
-        resi_connection: The convolutional block before residual connection. '1conv'/'3conv'
+class SampleAttention(nn.Module):
+    """Multi-Head Self-Attention along sample sequence dimension."""
+
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
+    ):
+        super().__init__()
+
+        self.dim = dim
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim**-0.5
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x: torch.Tensor):
+        b_sp, s, c = x.shape
+        qkv: torch.Tensor = (
+            self.qkv(x)
+            .reshape(b_sp, s, 3, self.num_heads, c // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        q = q * self.scale
+        attn = q @ k.transpose(-2, -1)
+        attn = self.softmax(attn)
+        attn = self.attn_drop(attn)
+
+        out = (attn @ v).transpose(1, 2).reshape(b_sp, s, c)
+        out = self.proj(out)
+        out = self.proj_drop(out)
+        return out
+
+
+class SampleBlock(nn.Module):
+    """Single Transformer Block for Sample Attention ()"""
+
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        drop: float = 0.0,
+        attn_drop: float = 0.0,
+        drop_path: float | list[float] = 0.0,
+        act_layer: type = nn.GELU,
+        norm_layer: type = nn.LayerNorm,
+    ):
+        super().__init__()
+
+        self.norm1 = norm_layer(dim)
+        self.attn = SampleAttention()
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.norm2 = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = Mlp(
+            in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer
+        )
+
+    def forward(self, x: torch.Tensor):
+        x = x + self.drop_path(self.attn(self.norm1(x)))
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        return x
+
+
+class RHAG_Sample(nn.Module):
+    """Custom RHAG but across different frames instead of spatially in a single frame."""
+
+    def __init__(
+        self,
+        dim: int,
+        depth: int,
+        num_heads: int,
+        num_samples: int = 25,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        drop: float = 0.0,
+        attn_drop: float = 0.0,
+        drop_path: float | list[float] = 0.0,
+        act_layer: type = nn.GELU,
+        norm_layer: type = nn.LayerNorm,
+        resi_connection: str = "1conv",
+    ):
+        super().__init__()
+
+        self.dim = dim
+        self.num_samples = num_samples
+
+        self.sample_pos_embed = nn.Parameter(torch.zeros(1, num_samples, dim))
+        trunc_normal_(self.sample_pos_embed, std=0.02)
+
+        self.blocks = nn.ModuleList(
+            [
+                SampleBlock(
+                    dim=dim,
+                    num_heads=num_heads,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop,
+                    attn_drop=attn_drop,
+                    drop_path=drop_path[i]
+                    if isinstance(drop_path, list)
+                    else drop_path,
+                    act_layer=act_layer,
+                    norm_layer=norm_layer,
+                )
+                for i in range(depth)
+            ]
+        )
+
+        if resi_connection == "1conv":
+            self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
+        elif resi_connection == "identity":
+            self.conv = nn.Identity()
+
+    def forward(self, x: torch.Tensor):
+        B, S, C, H, W = x.shape
+
+        x_seq = x.permute(0, 3, 4, 1, 2).reshape(B * H * W, S, C)
+
+        x_seq = x_seq + self.sample_pos_embed
+
+        for blk in self.blocks:
+            x_seq = blk(x_seq)
+
+        out_5d = x_seq.view(B, H, W, S, C).permute(0, 3, 4, 1, 2)
+        out_flat = out_5d.view(B * S, C, H, W)
+        conv_out: torch.Tensor = self.conv(out_flat).view(B, S, C, H, W)
+
+        return conv_out + x
+
+
+class SampleFusion(nn.Module):
+    """Sample Fusion Module.
+
+    Fuses 5D features [B, S, C, H, W] across S subpixel samples into a 4D
+    feature representation [B, C, H, W] for downstream spatial attention.
     """
 
     def __init__(
         self,
-        img_size=64,
-        patch_size=1,
-        in_chans=3,
-        embed_dim=96,
-        depths=(6, 6, 6, 6),
-        num_heads=(6, 6, 6, 6),
-        window_size=7,
-        compress_ratio=3,
-        squeeze_factor=30,
-        conv_scale=0.01,
-        overlap_ratio=0.5,
-        mlp_ratio=4.0,
-        qkv_bias=True,
-        qk_scale=None,
-        drop_rate=0.0,
-        attn_drop_rate=0.0,
-        drop_path_rate=0.1,
-        norm_layer=nn.LayerNorm,
-        ape=False,
-        patch_norm=True,
-        use_checkpoint=False,
-        upscale=2,
-        img_range=1.0,
-        upsampler="",
-        resi_connection="1conv",
-        **kwargs,
+        dim=int,
+        num_samples: int = 25,
+        act_layer: type = nn.GELU,
+        use_sample_attention: bool = True,
     ):
         super().__init__()
 
+        self.dim = dim
+        self.num_samples = num_samples
+        self.use_sample_attention = use_sample_attention
+
+        if use_sample_attention:
+            self.sample_weight_net = nn.Sequential(
+                nn.Conv3d(dim, dim // 2, kernel_size=(1, 3, 3), padding=(0, 1, 1)),
+                act_layer(),
+                nn.Conv3d(dim // 2, 1, kernel_size=(1, 1, 1)),
+            )
+
+        self.fusion_conv = nn.Sequential(
+            nn.Conv2d(num_samples * dim, dim, kernel_size=3, stride=1, padding=1),
+            act_layer(),
+            nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
+        )
+
+    def forward(self, x: torch.Tensor):
+        B, S, C, H, W = x.shape
+
+        shortcut = x.mean(dim=1)
+
+        if self.use_sample_attention:
+            x_3d = x.permute(0, 2, 1, 3, 4)
+            weights = self.sample_weight_net(x_3d)
+            weights = torch.softmax(weights, dim=2)
+            x_weighted = (x_3d * weights).permute(0, 2, 1, 3, 4)
+        else:
+            x_weighted = x
+
+        x_flat = x_weighted.reshape(B, S * C, H, W)
+        out = self.fusion_conv(x_flat)
+
+        return out + shortcut
+
+
+class HAT(nn.Module):
+    r"""Adapted Hybrid Attention Transformer"""
+
+    def __init__(
+        self,
+        num_samples: int = 25,
+        in_feats: int = 64,
+        out_chans: int = 1,
+        embed_dim: int = 64,
+        sample_depths: tuple[int] = (6, 6, 6, 6),
+        spatial_depths: tuple[int] = (6, 6),
+        num_heads: tuple[int] = (4, 4, 4, 4, 4, 4),
+        window_size: int = 8,
+        compress_ratio: int = 3,
+        squeeze_factor: int = 30,
+        conv_scale: float = 0.01,
+        overlap_ratio: float = 0.5,
+        mlp_ratio=4.0,
+        qkv_bias: bool = True,
+        qk_scale: float | None = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.1,
+        act_layer: type = nn.GELU,
+        norm_layer: type | None = nn.LayerNorm,
+        upscale: int = 2,
+        resi_connection: str = "1conv",
+        upsample_feats: int = 64,
+    ):
+        super().__init__()
+
+        self.num_samples = num_samples
+        self.embed_dim = embed_dim
         self.window_size = window_size
         self.shift_size = window_size // 2
         self.overlap_ratio = overlap_ratio
-
-        num_in_ch = in_chans
-        num_out_ch = in_chans
-        num_feat = 64
-        self.img_range = img_range
-        if in_chans == 3:
-            rgb_mean = (0.4488, 0.4371, 0.4040)
-            self.mean = torch.Tensor(rgb_mean).view(1, 3, 1, 1)
-        else:
-            self.mean = torch.zeros(1, 1, 1, 1)
         self.upscale = upscale
-        self.upsampler = upsampler
 
         # relative position index
         relative_position_index_SA = self.calculate_rpi_sa()
@@ -935,103 +870,95 @@ class HAT(nn.Module):
         self.register_buffer("relative_position_index_OCA", relative_position_index_OCA)
 
         # ------------------------- 1, shallow feature extraction ------------------------- #
-        self.conv_first = nn.Conv2d(num_in_ch, embed_dim, 3, 1, 1)
+        self.conv_first = nn.Conv2d(in_feats, embed_dim, 3, 1, 1)
+
+        # Learnable Position embedding
+        self.sample_pos_embed = nn.Parameter(
+            torch.zeros(1, num_samples, embed_dim, 1, 1)
+        )
+        trunc_normal_(self.sample_pos_embed, std=0.02)
 
         # ------------------------- 2, deep feature extraction ------------------------- #
-        self.num_layers = len(depths)
-        self.embed_dim = embed_dim
-        self.ape = ape
-        self.patch_norm = patch_norm
-        self.num_features = embed_dim
-        self.mlp_ratio = mlp_ratio
+        total_depth = sum(sample_depths) + sum(spatial_depths)
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, total_depth)]
 
-        # split image into non-overlapping patches
-        self.patch_embed = PatchEmbed(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=embed_dim,
-            embed_dim=embed_dim,
-            norm_layer=norm_layer if self.patch_norm else None,
-        )
-        num_patches = self.patch_embed.num_patches
-        patches_resolution = self.patch_embed.patches_resolution
-        self.patches_resolution = patches_resolution
-
-        # merge non-overlapping patches into image
-        self.patch_unembed = PatchUnEmbed(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=embed_dim,
-            embed_dim=embed_dim,
-            norm_layer=norm_layer if self.patch_norm else None,
-        )
-
-        # absolute position embedding
-        if self.ape:
-            self.absolute_pos_embed = nn.Parameter(
-                torch.zeros(1, num_patches, embed_dim)
+        # Phase 1
+        self.sample_layers = nn.ModuleList()
+        depth_offset = 0
+        for i_layer in range(len(sample_depths)):
+            layer = RHAG_Sample(
+                dim=embed_dim,
+                depth=sample_depths[i_layer],
+                num_heads=num_heads[i_layer],
+                num_samples=num_samples,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                qk_scale=qk_scale,
+                drop=drop_rate,
+                attn_drop=attn_drop_rate,
+                drop_path=dpr[depth_offset : depth_offset + sample_depths[i_layer]],
+                act_layer=act_layer,
+                norm_layer=norm_layer,
+                resi_connection=resi_connection,
             )
-            trunc_normal_(self.absolute_pos_embed, std=0.02)
+            self.sample_layers.append(layer)
+            depth_offset += sample_depths[i_layer]
 
-        self.pos_drop = nn.Dropout(p=drop_rate)
+        # Fusion Layer
+        self.sample_fusion = SampleFusion(
+            dim=embed_dim,
+            num_samples=num_samples,
+            act_layer=act_layer,
+            use_sample_attention=True
+        )
 
-        # stochastic depth
-        dpr = [
-            x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))
-        ]  # stochastic depth decay rule
-
-        # build Residual Hybrid Attention Groups (RHAG)
-        self.layers = nn.ModuleList()
-        for i_layer in range(self.num_layers):
+        # Phase 2
+        self.spatial_layers = nn.ModuleList()
+        for i_layer in range(len(spatial_depths)):
+            layer_idx = len(sample_depths) + i_layer
             layer = RHAG(
                 dim=embed_dim,
-                input_resolution=(patches_resolution[0], patches_resolution[1]),
-                depth=depths[i_layer],
-                num_heads=num_heads[i_layer],
+                depth=spatial_depths[i_layer],
+                num_heads=num_heads[layer_idx],
                 window_size=window_size,
                 compress_ratio=compress_ratio,
                 squeeze_factor=squeeze_factor,
                 conv_scale=conv_scale,
                 overlap_ratio=overlap_ratio,
-                mlp_ratio=self.mlp_ratio,
+                mlp_ratio=mlp_ratio,
                 qkv_bias=qkv_bias,
                 qk_scale=qk_scale,
                 drop=drop_rate,
                 attn_drop=attn_drop_rate,
-                drop_path=dpr[
-                    sum(depths[:i_layer]) : sum(depths[: i_layer + 1])
-                ],  # no impact on SR results
+                drop_path=dpr[depth_offset : depth_offset + spatial_depths[i_layer]],
                 norm_layer=norm_layer,
-                downsample=None,
-                use_checkpoint=use_checkpoint,
-                img_size=img_size,
-                patch_size=patch_size,
                 resi_connection=resi_connection,
             )
-            self.layers.append(layer)
-        self.norm = norm_layer(self.num_features)
+            self.spatial_layers.append(layer)
+            depth_offset += spatial_depths[i_layer]
 
-        # build the last conv layer in deep feature extraction
+        self.norm = norm_layer(embed_dim)
+
         if resi_connection == "1conv":
             self.conv_after_body = nn.Conv2d(embed_dim, embed_dim, 3, 1, 1)
         elif resi_connection == "identity":
             self.conv_after_body = nn.Identity()
 
         # ------------------------- 3, high quality image reconstruction ------------------------- #
-        if self.upsampler == "pixelshuffle":
-            # for classical SR
-            self.conv_before_upsample = nn.Sequential(
-                nn.Conv2d(embed_dim, num_feat, 3, 1, 1), nn.LeakyReLU(inplace=True)
-            )
-            self.upsample = Upsample(upscale, num_feat)
-            self.conv_last = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+        # for classical SR
+        self.conv_before_upsample = nn.Sequential(
+            nn.Conv2d(embed_dim, upsample_feats, 3, 1, 1),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+        )
+        self.upsample = Upsample(upscale, upsample_feats)
+        self.conv_last = nn.Conv2d(upsample_feats, out_chans, 3, 1, 1)
 
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=0.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
+            if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
@@ -1123,47 +1050,41 @@ class HAT(nn.Module):
 
         return attn_mask
 
-    @torch.jit.ignore
-    def no_weight_decay(self):
-        return {"absolute_pos_embed"}
+    def forward(self, x: torch.Tensor):
+        B, N, C, H, W = x.shape
+        x_size = (H, W)
 
-    @torch.jit.ignore
-    def no_weight_decay_keywords(self):
-        return {"relative_position_bias_table"}
-
-    def forward_features(self, x):
-        x_size = (x.shape[2], x.shape[3])
-
-        # Calculate attention mask and relative position index in advance to speed up inference.
-        # The original code is very time-consuming for large window size.
         attn_mask = self.calculate_mask(x_size).to(x.device)
         params = {
             "attn_mask": attn_mask,
             "rpi_sa": self.relative_position_index_SA,
             "rpi_oca": self.relative_position_index_OCA,
         }
+        x = x.view(B * N, C, H, W)
+        x = self.conv_first(x)
+        _, C_embed, _, _ = x.shape
+        x = x.view(B, N, C_embed, H, W)
+        x = (
+            x + self.sample_pos_embed
+        )  # Addition instead of concat. Harder to train, more memory efficient
 
-        x = self.patch_embed(x)
-        if self.ape:
-            x = x + self.absolute_pos_embed
-        x = self.pos_drop(x)
-
-        for layer in self.layers:
+        for layer in self.sample_layers:
             x = layer(x, x_size, params)
 
-        x = self.norm(x)  # b seq_len c
-        x = self.patch_unembed(x, x_size)
+        x_fused: torch.Tensor = self.sample_fusion(x)
 
-        return x
+        x_spatial = x_fused
+        for layer in self.spatial_layers:
+            x_spatial: torch.Tensor = layer(x_spatial, x_size, params)
 
-    def forward(self, x):
-        self.mean = self.mean.type_as(x)
-        x = (x - self.mean) * self.img_range
+        x_spatial = x_spatial.flatten(2).transpose(1, 2)
+        x_spatial = self.norm(x_spatial)
+        x_spatial = x_spatial.transpose(1, 2).view(B, C_embed, H, W)
 
-        x = self.conv_first(x)
-        x = self.conv_after_body(self.forward_features(x)) + x
-        x = self.conv_before_upsample(x)
+        x_out = self.conv_after_body(x_spatial) + x_fused
 
-        x = x / self.img_range + self.mean
+        x_out = self.conv_before_upsample(x_out)
+        x_out = self.upsample(x_out)
+        out = self.conv_last(x_out)
 
-        return x
+        return out

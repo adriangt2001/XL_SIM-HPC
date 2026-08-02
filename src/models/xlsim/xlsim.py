@@ -5,24 +5,16 @@ from .attention import HAT
 from .encoder import EDSR
 
 
-class Decoder(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x: torch.Tensor):
-        pass
-
-
 class XLSIM(BaseModel):
-    def __init__(self):
+    def __init__(self, encoder_kwargs: dict, fusion_kwargs: dict, decoder_kwargs: dict):
         super().__init__()
-        self.encoder = EDSR()
-        self.fusion = HAT()
-        self.decoder = Decoder()
+        self.encoder = EDSR(**encoder_kwargs)
+        self.fusion = HAT(**fusion_kwargs)
+        self.decoder = torch.nn.PixelShuffle(**decoder_kwargs)
 
     def forward(self, x: torch.Tensor):
-        # B, 25, 1, H, W
-        x = self.encoder(x)
-        x = self.fusion(x)
-        x = self.decoder(x)
+        # x.shape: BxNxCxHxW
+        x = self.encoder(x)  # Returns: BxNxCxHxW
+        x = self.fusion(x)  # Returns: BxCxSHxSW
+        # x = self.decoder(x)  # Returns: BxCxSHxSW
         return x
