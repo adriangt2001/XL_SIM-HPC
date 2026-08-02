@@ -223,3 +223,11 @@ __marimo__/
 .vscode
 checkpoints/
 wandb/
+runs
+runs/
+out
+out/
+slurm
+slurm/
+logs
+logs/
