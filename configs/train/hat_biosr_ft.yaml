@@ -1,7 +1,7 @@
 # Model configuration
-model_name: Swin2SR
-model_config: configs/models/swin2srX2.json
-weights: runs/Swin2SR/run_20260629_093149/best_psnr
+model_name: HAT
+model_config: configs/models/hat.json
+weights: runs/HAT/run_20260802_213007/best_psnr
 upscale: 2
 
 # Dataset, preprocessing and postprocessing
@@ -28,6 +28,7 @@ warmup_lr: 1e-7
 decay_iterations: [50000]
 decay_factor: 1e-7
 max_grad_norm: 1.0
+patience: 10
 valid_freq: 2000
 save_freq: 2000
 output_dir: runs

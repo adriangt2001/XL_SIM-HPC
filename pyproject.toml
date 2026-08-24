@@ -12,6 +12,7 @@ dependencies = [
     "magic-class>=0.7.21",
     "mrcfile>=1.5.4",
     "napari[all]>=0.6.6",
+    "ninja>=1.13.0",
     "numpy<2",
     "opencv-python>=4.11.0.86",
     "peft>=0.19.1",

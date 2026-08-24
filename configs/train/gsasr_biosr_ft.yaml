@@ -1,7 +1,7 @@
 # Model configuration
-model_name: Swin2SR
-model_config: configs/models/swin2srX2.json
-weights: runs/Swin2SR/run_20260629_093149/best_psnr
+model_name: GSASR
+model_config: configs/models/gsasr.json
+weights: runs/GSASR/run_20260709_111919/best_psnr
 upscale: 2
 
 # Dataset, preprocessing and postprocessing
@@ -10,7 +10,7 @@ test_size: 0.15
 batch_size: 8
 num_workers: 8
 first_crop: 1024
-second_crop: 64
+second_crop: 48
 
 # Losses
 l1_weight: 1.0
@@ -22,11 +22,11 @@ sparsity_weight: 0.0
 num_iterations: 50000
 optimizer: adamw
 lr: 1e-4
-scheduler: cosine
+scheduler: multistep
 warmup_iterations: 500
 warmup_lr: 1e-7
 decay_iterations: [50000]
-decay_factor: 1e-7
+decay_factor: 0.5
 max_grad_norm: 1.0
 valid_freq: 2000
 save_freq: 2000
