@@ -231,3 +231,7 @@ slurm
 slurm/
 logs
 logs/
+wandb
+wandb/
+media
+media/

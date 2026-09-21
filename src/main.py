@@ -1,7 +1,7 @@
 import argparse
 
-from .generation.dataset_generator import main as gen
-from .simulation.sim_pipeline import main as sim
+from .data.dataset_generator import main as gen
+from .microscope.sim_pipeline import main as sim
 from .viewer.view import main as view
 
 

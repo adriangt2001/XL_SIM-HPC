@@ -1,3 +1,5 @@
+# Does not currently work.
+
 import inspect
 from pathlib import Path
 
@@ -5,8 +7,8 @@ import napari
 from magicgui import magicgui
 from skimage.io import imread
 
-from src.simulation.microscope import Microscope
-from src.simulation.sim_pipeline import SimulatorPipeline
+from src.microscope.microscope import Microscope
+from src.microscope.sim_pipeline import SimulatorPipeline
 
 from .widgets import reconstruction, simulation
 

@@ -3,7 +3,6 @@ import torch
 from magicclass.widgets import CollapsibleContainer
 from magicgui import magicgui
 from magicgui.widgets import Container, PushButton
-
 from src.sres.methods import ALGORITHMS
 
 
@@ -17,7 +16,7 @@ def make_algorithm_settings():
         # algorithm={"label": "Algorithm"},
         algorithm={"choices": list(ALGORITHMS.keys())},
     )
-    def algorithm_settings(algorithm=list(ALGORITHMS.keys())[0]):
+    def algorithm_settings(algorithm=next(iter(ALGORITHMS.keys()))):
         pass
 
     algorithm_settings.label = None
