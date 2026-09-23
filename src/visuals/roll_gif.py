@@ -1,3 +1,5 @@
+import argparse
+
 import cv2
 import imageio
 import numpy as np
@@ -5,42 +7,117 @@ import torch
 
 from src.microscope.microscope import Microscope
 
-filename = 'gifs/biosr_microtubules_hr_2.png'
-microscope_config = 'configs/simulator/lessnoise_microscope.yaml'
-output = 'gifs/rolling_callibration.gif'
 
-# 1. Load or define grayscale sample image
-sample_gray = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
-assert sample_gray is not None, FileNotFoundError(f"{filename} not found.")
+def generate_rolling_calibration(
+    filename: str,
+    microscope_config: str,
+    output: str,
+    fps: int = 5,
+) -> None:
+    # Load grayscale sample image
+    sample_gray = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+    if sample_gray is None:
+        raise FileNotFoundError(f"{filename} not found.")
 
-h, w = sample_gray.shape
+    # Load microscope
+    microscope = Microscope.from_file(microscope_config)
 
-microscope = Microscope.from_file(microscope_config)
-_, pattern_stack = microscope(torch.from_numpy(sample_gray))
-pattern_stack = pattern_stack.cpu().numpy()
+    # Generate calibration pattern stack
+    _, pattern_stack = microscope(torch.from_numpy(sample_gray))
+    pattern_stack = pattern_stack.cpu().numpy()
 
-# 3. Apply static colormap to the target sample
-sample_colored = cv2.applyColorMap(sample_gray, cv2.COLORMAP_VIRIDIS)
+    # Apply static colormap to the target sample
+    sample_colored = cv2.applyColorMap(
+        sample_gray,
+        cv2.COLORMAP_VIRIDIS,
+    )
 
-frames = []
-print(f"{pattern_stack.shape=}")
-print(f"{sample_colored.shape=}")
+    print(f"{pattern_stack.shape=}")
+    print(f"{sample_colored.shape=}")
 
-# 4. Generate rolling pattern animation loop
-for frame_idx in range(pattern_stack.shape[0]):
-    pattern: np.ndarray = pattern_stack[frame_idx][:sample_colored.shape[0], :sample_colored.shape[1]]
-    pattern = (pattern * 255).astype(np.uint8)
+    frames = []
 
-    # Apply secondary colormap to dynamic calibration pattern
-    pattern_colored = cv2.applyColorMap(pattern, cv2.COLORMAP_HOT)
+    # Generate rolling pattern animation
+    for frame_idx in range(pattern_stack.shape[0]):
+        pattern: np.ndarray = pattern_stack[frame_idx][
+            : sample_colored.shape[0],
+            : sample_colored.shape[1],
+        ]
 
-    print(f"{pattern_colored.shape=}")
+        pattern = (pattern * 255).astype(np.uint8)
 
-    # Blend static sample with dynamic pattern overlay
-    blended = cv2.addWeighted(sample_colored, 0.6, pattern_colored, 0.4, 0)
+        # Apply colormap to dynamic calibration pattern
+        pattern_colored = cv2.applyColorMap(
+            pattern,
+            cv2.COLORMAP_HOT,
+        )
 
-    # Store frame in RGB format for GIF generation
-    frames.append(cv2.cvtColor(blended, cv2.COLOR_BGR2RGB))
+        print(f"Frame {frame_idx}: {pattern_colored.shape=}")
 
-# 5. Export result to GIF
-imageio.mimsave("gifs/rolling_calibration.gif", frames, fps=5, loop=0)
+        # Blend static sample with dynamic pattern
+        blended = cv2.addWeighted(
+            sample_colored,
+            0.6,
+            pattern_colored,
+            0.4,
+            0,
+        )
+
+        # Convert BGR -> RGB for GIF generation
+        frames.append(
+            cv2.cvtColor(blended, cv2.COLOR_BGR2RGB)
+        )
+
+    # Export GIF
+    imageio.mimsave(
+        output,
+        frames,
+        fps=fps,
+        loop=0,
+    )
+
+    print(f"Saved calibration GIF to: {output}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate a rolling microscope calibration GIF."
+    )
+
+    parser.add_argument(
+        "--filename",
+        required=True,
+        help="Path to the input grayscale sample image.",
+    )
+
+    parser.add_argument(
+        "--microscope-config",
+        required=True,
+        help="Path to the microscope YAML configuration.",
+    )
+
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="Path to the output GIF.",
+    )
+
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=5,
+        help="GIF frame rate (default: 5).",
+    )
+
+    args = parser.parse_args()
+
+    generate_rolling_calibration(
+        filename=args.filename,
+        microscope_config=args.microscope_config,
+        output=args.output,
+        fps=args.fps,
+    )
+
+
+if __name__ == "__main__":
+    main()
