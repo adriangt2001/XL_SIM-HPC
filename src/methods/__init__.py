@@ -8,6 +8,7 @@ from .basic import BasicOP
 from .burstormer import Burstormer
 from .gsasr.gsasr import GSASR
 from .hat import HAT
+from .jrl import JRL
 from .rl import RichardsonLucy
 from .xlsim import XLSIM
 
@@ -57,7 +58,9 @@ def get_model(
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"]}
 
-            def postprocess_fn(output: ImageSuperResolutionOutput, target: torch.Tensor = None):
+            def postprocess_fn(
+                output: ImageSuperResolutionOutput, target: torch.Tensor = None
+            ):
                 return output.reconstruction
 
         case "GSASR":
@@ -101,14 +104,16 @@ def get_model(
 
             def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
                 return output
-            
+
         case "RL":
             model = RichardsonLucy.from_json_file(model_config)
 
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
 
-            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+            def postprocess_fn(
+                output: torch.Tensor, target: torch.Tensor | None = None
+            ):
                 processed_img = output
                 method = model.op
                 if "max" == method:
@@ -127,6 +132,22 @@ def get_model(
 
             return model, preprocess_fn, postprocess_fn
 
+        case "JRL":
+            model = JRL.from_json_file(model_config)
+
+            def preprocess_fn(**kwargs):
+                return {
+                    "pixel_values": kwargs["pixel_values"],
+                    "calib": kwargs["calib"],
+                    "psf": kwargs["psf"],
+                }
+
+            def postprocess_fn(
+                output: torch.Tensor, target: torch.Tensor | None = None
+            ):
+                return output
+
+            return model, preprocess_fn, postprocess_fn
         case "Basic":
             model = BasicOP.from_json_file(model_config)
 

@@ -6,12 +6,12 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.utils import ProjectConfiguration, broadcast_object_list, tqdm
+from src.microscope.microscope import Microscope
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchvision.utils import make_grid
 
 import wandb
 from data.preprocessing import crop_tensor
-from src.microscope.sim_pipeline import SimulatorPipeline
 
 
 class Trainer:
@@ -43,7 +43,9 @@ class Trainer:
         patience: int,
         checkpoint: str | None = None,
     ):
-        ddp_kwargs = DistributedDataParallelKwargs(broadcast_buffers=False, find_unused_parameters=True)
+        ddp_kwargs = DistributedDataParallelKwargs(
+            broadcast_buffers=False, find_unused_parameters=True
+        )
 
         self.accelerator = Accelerator()
         self.model_name = model_name
@@ -101,8 +103,8 @@ class Trainer:
         self.image_log_freq = image_log_freq
         self.max_grad_norm = max_grad_norm
         self.patience = patience
-        self.simulator = SimulatorPipeline.from_file(
-            microscope_filename, noise_filename
+        self.simulator = Microscope.from_file(
+            microscope_filename
         ).to(device=self.device)
         self.psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device=self.device)
         self.ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(
@@ -270,7 +272,7 @@ class Trainer:
                 pair_image=targets,
                 pair_scale_factor=self.upscale,
                 offset=target_padding.max(dim=0).values // (self.upscale),
-                mode='center',
+                mode="center",
             )
             preprocessed_batch = self.preprocess_fn(
                 pixel_values=pixel_values, calibs=calibs, upscale=self.upscale
@@ -313,11 +315,13 @@ class Trainer:
         epoch: int,
         best_psnr: dict[str, int],
         best_ssim: dict[str, int],
-        patience: int
+        patience: int,
     ):
         self.accelerator.save_state(self.output_dir)
         checkpoint_path = self.output_dir / Path("checkpoints")
-        checkpoint_path = max(checkpoint_path.iterdir(), key=lambda x: int(x.name.split("_")[-1]))
+        checkpoint_path = max(
+            checkpoint_path.iterdir(), key=lambda x: int(x.name.split("_")[-1])
+        )
         torch.save(
             {
                 "step": step,
@@ -376,7 +380,11 @@ class Trainer:
                         F.interpolate(
                             inp[None, 12:13], scale_factor=self.upscale, mode="nearest"
                         )[0],
-                        F.interpolate(torch.max(inp, dim=0).values[None, None], scale_factor=self.upscale, mode="nearest")[0]
+                        F.interpolate(
+                            torch.max(inp, dim=0).values[None, None],
+                            scale_factor=self.upscale,
+                            mode="nearest",
+                        )[0],
                     ],
                     nrow=2,
                 )
