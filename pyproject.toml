@@ -3,12 +3,13 @@ name = "xl-sim"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "accelerate>=1.13.0",
     "configargparse>=1.7.5",
     "datasets>=2.19.1",
     "deepinv>=0.3.6",
+    "frc>=0.1.1",
     "ipympl>=0.10.0",
     "magic-class>=0.7.21",
     "mrcfile>=1.5.4",
