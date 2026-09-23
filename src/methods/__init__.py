@@ -8,7 +8,7 @@ from .basic import BasicOP
 from .burstormer import Burstormer
 from .gsasr.gsasr import GSASR
 from .hat import HAT
-from .richardson import RichardsonLucy
+from .rl import RichardsonLucy
 from .xlsim import XLSIM
 
 __all__ = ["get_model"]
