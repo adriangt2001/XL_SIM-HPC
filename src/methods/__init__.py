@@ -110,15 +110,19 @@ def get_model(
 
             def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
                 processed_img = output
-                # method = model.op
-                # if "max" == method:
-                #     processed_img = output
-                # elif "mean" == method:
-                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                #     processed_img = output / avg[..., None, None, None]
-                # elif "sum" == method:
-                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                #     processed_img = output / avg[..., None, None, None]
+                method = model.op
+                if "max" == method:
+                    processed_img = output
+                elif "mean" == method or "sum" == method:
+                    low = torch.quantile(output.flatten(), 1.0 / 100.0)
+                    high = torch.quantile(output.flatten(), 99.0 / 100.0)
+
+                    if high <= low:
+                        processed_img = output
+
+                    processed_img = (output - low) / (high - low)
+                    processed_img = processed_img.clamp(0.0, 1.0)
+
                 return processed_img
 
             return model, preprocess_fn, postprocess_fn

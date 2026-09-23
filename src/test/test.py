@@ -11,9 +11,7 @@ import wandb
 from data.preprocessing import crop_tensor
 from src.data.datasets import get_data
 from src.methods import get_model
-from src.microscope.sim_pipeline import SimulatorPipeline
-from src.parser import parse_arguments_test
-from visuals.visualization import plot_sr_comparison
+from src.microscope.microscope import Microscope
 
 
 def main(args: Namespace):
@@ -72,9 +70,7 @@ def main(args: Namespace):
         args.num_workers,
     )
 
-    simulator = SimulatorPipeline.from_file(
-        args.microscope_config, args.noise_config
-    ).to(device=device)
+    simulator = Microscope.from_file(args.microscope_config).to(device=device)
     psnr_fn = PeakSignalNoiseRatio(data_range=1.0).to(device=device)
     ssim_fn = StructuralSimilarityIndexMeasure(data_range=1.0).to(device=device)
 
@@ -114,7 +110,6 @@ def main(args: Namespace):
                 pixel_values=pixel_values, psf=psf, calibs=calibs, upscale=args.upscale
             )
 
-            
             outputs = model(**preprocessed_batch)
             outputs = postprocess_fn(outputs)
 
@@ -125,7 +120,10 @@ def main(args: Namespace):
                 comparison_samples = []
                 for comp_model, comp_pre_fn, comp_post_fn in comparison_models:
                     comp_preprocessed = comp_pre_fn(
-                        pixel_values=pixel_values, psf=psf, calibs=calibs, upscale=args.upscale
+                        pixel_values=pixel_values,
+                        psf=psf,
+                        calibs=calibs,
+                        upscale=args.upscale,
                     )
                     comp_out = comp_model(**comp_preprocessed)
                     comparison_samples.append(
@@ -157,14 +155,6 @@ def main(args: Namespace):
                             caption=f"Sample {i}:\n Top left: Target | Top right: Prediction\n Bottom left: Input C12",
                         )
                     )
-
-                    plot_sr_comparison(
-                        target,
-                        inp[12:13],
-                        [(img[i], name) for img, name in comparison_samples]
-                        + [(pred, args.main_model_name)],
-                        save_path=f"logs/{run_name}.png",
-                    )
                 wandb.log({"test/images": images})
 
                 logged_batch = True
@@ -180,10 +170,121 @@ def main(args: Namespace):
         print("==== Test Results ====")
         for k, v in metrics.items():
             print(f"{k}: {v:.6f}")
-        
+
         wandb.finish()
 
 
 if "__main__" == __name__:
-    args = parse_arguments_test()
+    from configargparse import ArgumentParser
+
+    parser = ArgumentParser()
+
+    # Config file
+    parser.add_argument(
+        "-c", "--config", is_config_file=True, help="Path to config file"
+    )
+
+    # Models configuration
+    parser.add_argument(
+        "--main_model_name",
+        type=str,
+        default="Swin2SR",
+        help="Name of the main model to test",
+    )
+    parser.add_argument(
+        "--main_model_config",
+        type=str,
+        default="configs/models/swin2srX2.json",
+        help="Path to the main model configuration",
+    )
+    parser.add_argument(
+        "--comparison_model_names",
+        type=str,
+        nargs="+",
+        default=["RL_Sum", "Sum"],
+        help="Names of other methods to compare against",
+    )
+    parser.add_argument(
+        "--comparison_model_configs",
+        type=str,
+        nargs="+",
+        default=["configs/models/rlX2_sum.json", "configs/models/rlX2_sum.json"],
+        help="Path to the other methods configuration. Must be in the same order as the names.",
+    )
+    parser.add_argument("--upscale", type=int, default=2, help="Upsampling factor")
+
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume training",
+    )
+    parser.add_argument(
+        "--comparison_checkpoints",
+        type=str,
+        nargs="+",
+        default=[None, None],
+        help="Path to checkpoint to resume training",
+    )
+
+    # Dataset, preprocessing and postprocessing
+    parser.add_argument(
+        "--dataset", type=str, default="data/DIV2K", help="Path to the dataset"
+    )
+    parser.add_argument(
+        "--split", type=str, default="valid", help="Name of the split to load"
+    )
+    parser.add_argument(
+        "--test_size",
+        type=float,
+        default=0.99,
+        help="Size of the validation/test set of the dataset",
+    )
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
+    parser.add_argument(
+        "--num_workers", type=int, default=4, help="Num workers for DataLoader"
+    )
+    parser.add_argument(
+        "--first_crop", type=int, default=256, help="Size of LR first cropping"
+    )
+    parser.add_argument(
+        "--second_crop", type=int, default=64, help="Size of LR second cropping"
+    )
+    parser.add_argument(
+        "--lora", action="store_true", default=False, help="Whether to use lora or not"
+    )
+    parser.add_argument(
+        "--lora_r", type=int, default=16, help="Rank of the lora matrices"
+    )
+    parser.add_argument("--lora_alpha", type=int, default=32, help="Alpha of the lora")
+    parser.add_argument(
+        "--lora_dropout", type=float, default=0.1, help="Dropout rate of the lora"
+    )
+    parser.add_argument(
+        "--lora_target_modules",
+        type=str,
+        nargs="+",
+        default=["all-linear"],
+        help="Layers to target with lora",
+    )
+    parser.add_argument(
+        "--lora_bias", type=str, default="none", help="Bias to target with lora"
+    )
+
+    # Simulator
+    parser.add_argument(
+        "--microscope_config",
+        type=str,
+        default="configs/simulator/default_microscope.yaml",
+        help="Path to the microscope configuration",
+    )
+    parser.add_argument(
+        "--noise_config",
+        type=str,
+        default="configs/simulator/default_noise.yaml",
+        help="Path to the noise configuration",
+    )
+
+    args = parser.parse_args()
+
     main(args)
