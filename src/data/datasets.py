@@ -14,7 +14,7 @@ from torchvision.transforms import (
 )
 from torchvision.transforms.functional import to_tensor
 
-from data.preprocessing import crop_pil
+from .preprocessing import crop_pil
 
 
 def _prepare_biosr(data_path: Path, test_size: float, first_crop: int):

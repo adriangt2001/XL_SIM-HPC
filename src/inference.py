@@ -1,50 +1,27 @@
-import argparse
-import sys
 from pathlib import Path
 
+import cv2
 import numpy as np
 import torch
-from configargparse import Namespace
-from PIL import Image
+from configargparse import ArgumentParser, Namespace
+from tqdm import tqdm
 
-from .data.datasets import get_data
-from .data.preprocessing import crop_tensor
 from .methods import get_model
-from .microscope.sim_pipeline import SimulatorPipeline
-from .parser import parse_arguments_test
+from .microscope.microscope import Microscope
+from .utils import load_image_torch, main_logger
 
 
-def parse_extra_args(argv):
-    """Pull custom flags out of argv before handing the rest to parse_arguments_test()."""
-    extra_parser = argparse.ArgumentParser(add_help=False)
+def main(args: Namespace):
+    logger = main_logger()
 
-    extra_parser.add_argument(
-        "--index", type=int, default=0, help="Index of dataset item for inference"
-    )
-    extra_parser.add_argument(
-        "--output", type=str, default="output", help="Directory path to save images"
-    )
-
-    extra_args, remaining_argv = extra_parser.parse_known_args(argv)
-    return extra_args, remaining_argv
-
-
-def save_grayscale_image(tensor: torch.Tensor, save_path: Path):
-    """Saves a 2D image tensor directly to disk as a single-channel (grayscale) image."""
-    img_np = tensor.squeeze().detach().cpu().numpy()
-    img_np = np.clip(img_np, 0.0, 1.0)
-    img_uint8 = (img_np * 255.0).astype(np.uint8)
-    Image.fromarray(img_uint8, mode="L").save(save_path)
-
-
-def main(args: Namespace, extra_args: Namespace):
+    assert args.image.exists() and args.model_config.exists()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Main model
+    logger.info("Loading model...")
     model, preprocess_fn, postprocess_fn = get_model(
-        args.main_model_name,
-        args.main_model_config,
-        args.checkpoint,
+        args.model_name,
+        args.model_config,
+        args.weights,
         args.lora,
         lora=args.lora,
         lora_r=args.lora_r,
@@ -57,83 +34,62 @@ def main(args: Namespace, extra_args: Namespace):
     if args.lora:
         model = model.merge_and_unload()
     model.eval()
+    logger.info("Model loaded!")
 
-    # Dataset and Simulator
-    _, _, test_loader = get_data(
-        args.dataset,
-        args.test_size,
-        args.first_crop,
-        args.split,
-        args.batch_size,
-        args.num_workers,
-    )
+    logger.info("Loading microscope simulator...")
+    microscope = Microscope.from_file(args.microscope_config).to(device=device)
+    logger.info("Microscope simulator loaded!")
 
-    test_dataset = test_loader.dataset
-    if extra_args.index < 0 or extra_args.index >= len(test_dataset):
-        raise IndexError(
-            f"Index {extra_args.index} out of bounds for dataset of length {len(test_dataset)}."
-        )
-
-    simulator = SimulatorPipeline.from_file(
-        args.microscope_config, args.noise_config
-    ).to(device=device)
-
-    # Fetch specific sample by index
-    sample = test_dataset[extra_args.index]
-    targets = sample["hr"].unsqueeze(0).to(device=device)
-    target_padding: torch.Tensor = sample["padding"].unsqueeze(0).to(device=device)
-
-    # Resolve Dataset and Class metadata strings
-    dataset_name = Path(args.dataset).stem
-    class_val = sample.get("class", "noclass")
-    if (
-        isinstance(class_val, int)
-        and hasattr(test_dataset, "features")
-        and "class" in test_dataset.features
-    ):
-        class_name = test_dataset.features["class"].int2str(class_val)
+    images_paths: list[Path] = []
+    if args.image.is_dir():
+        images_paths = list(args.image.iterdir())
     else:
-        class_name = str(class_val)
+        images_paths.append(args.image)
+
+    args.out.mkdir(exist_ok=True)
+    output_model_folder: Path = args.out / args.model_name
+    output_model_folder.mkdir(exist_ok=True)
 
     with torch.inference_mode():
-        pixel_values, calibs = simulator(targets)
-        pixel_values, targets, _ = crop_tensor(
-            pixel_values,
-            args.second_crop,
-            pair_image=targets,
-            pair_scale_factor=args.upscale,
-            offset=target_padding.max(dim=0).values // (2 * args.upscale),
-            mode="center",
-        )
-        psf = simulator.microscope.psf_em
-        preprocessed_batch = preprocess_fn(
-            pixel_values=pixel_values, psf=psf, calibs=calibs, upscale=args.upscale
-        )
+        for file in tqdm(images_paths, desc="Inference...", unit="Images"):
+            image = load_image_torch(file).to(device=device)
+            image = image[None, None, ...]
 
-        outputs = model(**preprocessed_batch)
-        outputs = postprocess_fn(outputs)
+            pixel_values, calibs = microscope(image)
+            psf = microscope.psf_em
+            preprocessed_batch = preprocess_fn(pixel_values=pixel_values, psf=psf, calibs=calibs, upscale=args.upscale)
 
-        # Create output directory
-        output_dir = Path(extra_args.output)
-        output_dir.mkdir(parents=True, exist_ok=True)
+            outputs = model(**preprocessed_batch)
+            outputs: torch.Tensor = postprocess_fn(outputs)
 
-        # Save model inference output image (1-channel grayscale)
-        model_filename = (
-            f"{dataset_name}_{class_name}_{args.main_model_name}_{extra_args.index}.png".lower()
-        )
-        model_img_path = output_dir / model_filename
-        save_grayscale_image(outputs, model_img_path)
-        print(f"Saved model inference result to: {model_img_path}")
+            output_file = (output_model_folder / file.stem).with_suffix(".png")
 
-        # Save HR ground-truth target image (1-channel grayscale)
-        hr_filename = f"{dataset_name}_{class_name}_HR_{extra_args.index}.png".lower()
-        hr_img_path = output_dir / hr_filename
-        save_grayscale_image(targets, hr_img_path)
-        print(f"Saved HR ground-truth image to: {hr_img_path}")
+            output_image = (outputs.cpu().numpy().squeeze() * 255).astype(np.uint8)
+            cv2.imwrite(str(output_file), output_image)
 
 
 if "__main__" == __name__:
-    extra_args, remaining_argv = parse_extra_args(sys.argv[1:])
-    sys.argv = [sys.argv[0]] + remaining_argv
-    args = parse_arguments_test()
-    main(args, extra_args)
+    parser = ArgumentParser()
+
+    parser.add_argument("-c", "--config", is_config_file=True, help="Path to config file")
+
+    parser.add_argument("--image", type=Path, required=True, help="Image or folder to process")
+    parser.add_argument("--out", type=Path, required=True, help="Output folder")
+    parser.add_argument("--upscale", type=int, required=True, help="Upsampling factor")
+
+    # Model configuration
+    parser.add_argument("--model_name", type=str, required=True, help="Name of the model")
+    parser.add_argument("--model_config", type=Path, required=True, help="Model configuration")
+    parser.add_argument("--weights", type=Path, default=None, help="Model weights folder")
+    parser.add_argument("--lora", action="store_true", default=False, help="Whether to use lora or not")
+    parser.add_argument("--lora_r", type=int, default=16, help="Rank of the lora matrices")
+    parser.add_argument("--lora_alpha", type=int, default=32, help="Alpha of the lora")
+    parser.add_argument("--lora_dropout", type=float, default=0.1, help="Dropout rate of the lora")
+    parser.add_argument("--lora_target_modules", type=str, nargs="+", default=["all-linear"], help="Layers to target with lora")
+    parser.add_argument("--lora_bias", type=str, default="none", help="Bias to target with lora")
+
+    # Microscope configuration
+    parser.add_argument("--microscope_config", type=Path, required=True, help="Microscope configuration")
+
+    args = parser.parse_args()
+    main(args)

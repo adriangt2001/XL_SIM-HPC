@@ -6,12 +6,12 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.utils import ProjectConfiguration, broadcast_object_list, tqdm
-from src.microscope.microscope import Microscope
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from torchvision.utils import make_grid
 
 import wandb
-from data.preprocessing import crop_tensor
+from src.data.preprocessing import crop_tensor
+from src.microscope.microscope import Microscope
 
 
 class Trainer:

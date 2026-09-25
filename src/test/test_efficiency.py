@@ -6,11 +6,9 @@ from configargparse import Namespace
 from torch.utils.flop_counter import FlopCounterMode
 
 import wandb
-from data.preprocessing import crop_tensor
+from src.data.preprocessing import crop_tensor
 from src.methods import get_model
-from src.microscope.sim_pipeline import SimulatorPipeline
-
-from ..train.parser import parse_arguments_test
+from src.microscope.microscope import Microscope
 
 # The model's input (after the simulator + crop + preprocessing) is expected
 # to be a 25-channel tensor.
@@ -49,8 +47,8 @@ def main(args: Namespace):
     # Simulator only: we keep it so the model receives correctly formatted
     # input (simulated microscope data), but we do not use the real dataset
     # at all, and the simulator's pass is never included in the metrics.
-    simulator = SimulatorPipeline.from_file(
-        args.microscope_config, args.noise_config
+    simulator = Microscope.from_file(
+        args.microscope_config
     ).to(device=device)
 
     run_name = f"test_{args.main_model_name}_efficiency_{'_'.join(Path(args.checkpoint).parts[2:])}".rstrip(
@@ -139,5 +137,10 @@ def main(args: Namespace):
 
 
 if "__main__" == __name__:
-    args = parse_arguments_test()
+    from configargparse import ArgumentParser
+    parser = ArgumentParser()
+
+    # Add arguments
+
+    args = parser.parse_args()
     main(args)
