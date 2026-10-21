@@ -1,0 +1,11 @@
+{
+    "input_channels": 1,
+    "hidden_dims": 64,
+    "kernel_size": 3,
+    "swin2sr_cfg": {
+        "num_channels": 180,
+        "num_channels_out": 1,
+        "window_size": 8,
+        "upscale": 2
+    }
+}

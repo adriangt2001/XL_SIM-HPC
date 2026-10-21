@@ -1,0 +1,13 @@
+# Models configs
+model_name: JRL
+model_config: configs/models/jrl.json
+weights: ""
+
+# Dataset, preprocessing and postprocessing
+dataset: data/BioSR
+split: validation
+test_size: 0.15
+batch_size: 1
+num_workers: 8
+first_crop: 1024
+second_crop: 512

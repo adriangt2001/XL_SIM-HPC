@@ -1,0 +1,27 @@
+project: "XL-SIM"
+program: src.train.train
+method: grid # grid/random
+
+metric:
+  name: valid/psnr
+  goal: maximize
+
+parameters:
+  continuity_weight:
+    values: [1.0, 0.9, 0.7, 0.5, 0.2]
+  
+  l1_weight:
+    value: 1.0
+  sparsity_weight:
+    value: 0.0 
+  wl1_weight:
+    value: 0.0
+  config:
+    value: "configs/train/swin2sr_biosr_ft.yaml"
+
+command:
+  - accelerate
+  - launch
+  - -m
+  - ${program}
+  - ${args}

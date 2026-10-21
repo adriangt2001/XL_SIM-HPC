@@ -69,8 +69,9 @@ def main(args: Namespace):
 
     args.out.mkdir(exist_ok=True)
     output_csv: Path = args.out / "test.csv"
-    output_model: Path = args.out / args.model_name / args.dataset.stem
-    output_model.mkdir(exist_ok=True, parents=True)
+    if args.visual:
+        output_model: Path = args.out / args.model_name / args.dataset.stem
+        output_model.mkdir(exist_ok=True, parents=True)
 
     logger.info("Test ready to start!")
 
@@ -115,30 +116,28 @@ def main(args: Namespace):
                     output = (output.cpu().numpy() * 255).astype(np.uint8).squeeze()
                     save_image(output_image_path, output)
 
-        metrics = {
-            "psnr": psnr_fn.compute().item(),
-            "ssim": ssim_fn.compute().item(),
-        }
+    metrics = {
+        "psnr": psnr_fn.compute().item(),
+        "ssim": ssim_fn.compute().item(),
+    }
 
-        wandb.log(metrics)
+    metrics_wandb = {}
+    for k, v in metrics.items():
+        metrics_wandb["test/" + k] = v
 
-        print()
-        print("==== Test Results ====")
-        for k, v in metrics.items():
-            print(f"{k}: {v:.6f}")
+    wandb.log(metrics_wandb)
+    wandb.finish()
 
-        wandb.finish()
+    if output_csv.exists():
+        df = pd.read_csv(output_csv)
+    else:
+        df = pd.DataFrame(columns=["Dataset",  "Microscope", "Method", "Configuration", "Upscale", "PSNR", "SSIM"])
 
-        if output_csv.exists():
-            df = pd.read_csv(output_csv)
-        else:
-            df = pd.DataFrame(columns=["Dataset",  "Microscope", "Method", "Configuration", "Upscale", "PSNR", "SSIM"])
+    df.loc[len(df)] = [args.dataset.stem, args.microscope_config.stem, args.model_name, args.model_config, args.upscale, metrics["psnr"], metrics["ssim"]]
+    df = df.drop_duplicates()
+    df.to_csv(output_csv, index=False)
 
-        df.loc[len(df)] = [args.dataset.stem, args.microscope_config.stem, args.model_name, args.model_config, args.upscale, metrics["psnr"], metrics["ssim"]]
-        df = df.drop_duplicates()
-        df.to_csv(output_csv, index=False)
-
-        logger.info(f"Saved results to {output_csv}!")
+    logger.info(f"Saved results to {output_csv}!")
 
 
 if "__main__" == __name__:

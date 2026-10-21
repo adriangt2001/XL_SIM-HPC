@@ -1,0 +1,14 @@
+# Models configs
+model_name: HAT
+model_config: configs/models/hat.json
+weights: runs/HAT/best_biosr/best_psnr
+lora: true
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.1
+lora_target_modules: [all-linear]
+lora_bias: none
+
+# Data
+hr_size: 1024,1024
+batch_size: 1

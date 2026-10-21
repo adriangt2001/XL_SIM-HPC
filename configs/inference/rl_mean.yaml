@@ -1,0 +1,6 @@
+# Models configs
+model_name: RL
+model_config: configs/models/rlX2_mean.json
+
+# Simulator
+microscope_config: configs/simulator/lessnoise_microscope.yaml

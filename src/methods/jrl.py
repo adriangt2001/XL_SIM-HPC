@@ -61,60 +61,53 @@ def pixelbasedprocess_fast(
     ):  # 'homodyne' - Homodyne processing using phasors, this is because scanning can start at position 3 for example
         if phasors_real is not None and phasors_imag is not None:
             # Roll according to order, roll has ti be backwards
-            phasors_real = torch.roll(phasors_real, shifts=-stack_order, dims=0)
-            phasors_imag = torch.roll(phasors_imag, shifts=-stack_order, dims=0)
+            phasors_real = torch.roll(phasors_real, shifts=-stack_order, dims=1)
+            phasors_imag = torch.roll(phasors_imag, shifts=-stack_order, dims=1)
 
             im_processed = torch.sqrt(
-                torch.sum(im_stack * phasors_real, dim=0) ** 2
-                + torch.sum(im_stack * phasors_imag, dim=0) ** 2
+                torch.sum(im_stack * phasors_real, dim=1) ** 2
+                + torch.sum(im_stack * phasors_imag, dim=1) ** 2
             )
 
         else:
-            print(
-                "Error: phasors_real and phasors_imag are required for 'homodyne' mode."
-            )
-            return None
+            raise ValueError("Error: phasors_real and phasors_imag are required for 'homodyne' mode.")
     elif mode == 1:  # 'superconfocal' - Superconfocal projection
         im_processed = (
-            torch.max(im_stack, dim=0).values
-            + torch.min(im_stack, dim=0).values
-            - gamma * torch.mean(im_stack, dim=0)
+            torch.max(im_stack, dim=1).values
+            + torch.min(im_stack, dim=1).values
+            - gamma * torch.mean(im_stack, dim=1)
         )
     elif mode == 2:  # 'max-min' - Range projection (max - min) across frames
         im_processed = (
-            torch.max(im_stack, dim=0).values - torch.min(im_stack, dim=0).values
+            torch.max(im_stack, dim=1).values - torch.min(im_stack, dim=1).values
         )
     elif mode == 3:  # 'epi' - Average projection across frames
-        im_processed = torch.mean(im_stack, dim=0)
+        im_processed = torch.mean(im_stack, dim=1)
     elif mode == 4:  # Scaled Substraction
         if mask_on is not None:
             # Compute the numerator and denominator for the beta calculation
             # N = im_stack.size(0)  # Number of frames
-            sum_mask_on = torch.sum(mask_on, dim=0)
-            sum_mask_off = torch.sum(mask_off, dim=0)
+            sum_mask_on = torch.sum(mask_on, dim=1)
+            sum_mask_off = torch.sum(mask_off, dim=1)
 
-            # beta = (N * torch.sum(mask_on * mask_off, dim=0) - (sum_mask_on * sum_mask_off))/(N * torch.sum(mask_on**2, dim=0) - sum_mask_on**2)
+            # beta = (N * torch.sum(mask_on * mask_off, dim=1) - (sum_mask_on * sum_mask_off))/(N * torch.sum(mask_on**2, dim=1) - sum_mask_on**2)
             beta = 1
 
             # Compute scaled subtraction
             im_processed = beta * (
-                torch.sum(im_stack * mask_on, dim=0) / sum_mask_on
-                - torch.sum(im_stack * mask_off, dim=0) / sum_mask_off
+                torch.sum(im_stack * mask_on, dim=1) / sum_mask_on
+                - torch.sum(im_stack * mask_off, dim=1) / sum_mask_off
             )
 
         else:
-            print(
-                "Error: Calibration pattern is required for Scaled Substraction algorithm."
-            )
-            return None
+            raise ValueError("Error: Calibration pattern is required for Scaled Substraction algorithm.")
 
     elif mode == 10:  # 'max' - Maximum projection across frames
-        im_processed = torch.max(im_stack, dim=0).values
+        im_processed = torch.max(im_stack, dim=1).values
     elif mode == 11:  # 'std' - Standard deviation projection
-        im_processed = torch.std(im_stack, dim=0)
+        im_processed = torch.std(im_stack, dim=1)
     else:
-        print("Invalid mode")
-        return None
+        raise ValueError("Invalid mode")
 
     return im_processed
 
@@ -206,24 +199,25 @@ def microscope_simulator_inverse_fast(
 
     # Multiply by the excitation pattern
     estimate = result * exc_pat_moves_hr
-    return estimate.sum(dim=0) / (H_hr * W_hr)
+    return estimate.sum(dim=1) / (H_hr * W_hr)
 
 
 class JRL(BaseModel):
     def __init__(self, upscale: int, n_iter: int = 10):
+        super().__init__()
         self.upscale = upscale
         self.n_iter = n_iter
 
     def forward(
         self,
         pixel_values: torch.Tensor,
-        calib: torch.Tensor,
+        calibs: torch.Tensor,
         psf: torch.Tensor,
         im_init: torch.Tensor | None = None,
     ):
         assert (
             pixel_values.dtype == torch.float32
-            and calib.dtype == torch.float32
+            and calibs.dtype == torch.float32
             and psf.dtype == torch.float32
         )
         if im_init is not None:
@@ -248,7 +242,6 @@ class JRL(BaseModel):
                 stack_order=0,
             )
             estimate_tensor = estimate_lr
-            print(f"{estimate_tensor.shape=}")
             estimate = F.interpolate(
                 estimate_tensor[None, ...],
                 scale_factor=self.upscale,
@@ -257,9 +250,9 @@ class JRL(BaseModel):
             )
 
         # Upsample excitation patterns and PSF in case both are given at the same ressolution as im_stack
-        if calib.shape[1] <= pixel_values.shape[1] and self.upscale > 1:
-            calib = F.interpolate(
-                calib, scale_factor=self.upscale, mode="bilinear", align_corners=False
+        if calibs.shape[1] <= pixel_values.shape[1] and self.upscale > 1:
+            calibs = F.interpolate(
+                calibs, scale_factor=self.upscale, mode="bilinear", align_corners=False
             )
 
         if psf.shape[1] <= pixel_values.shape[1] and self.upscale > 1:
@@ -276,29 +269,25 @@ class JRL(BaseModel):
         H_ones = microscope_simulator_inverse_fast(
             torch.ones_like(pixel_values),
             PSF_fft,
-            calib,
+            calibs,
             upsample=self.upscale,
             padd=False,
         )
 
         # Iterative RL updates
         for i in range(self.n_iter):
-            print(f"Iteration {i + 1}/{self.n_iter}")
             stack_sim = microscope_simulator_fast(
-                estimate, PSF_fft, calib, downsample=self.upscale, padd=False
+                estimate, PSF_fft, calibs, downsample=self.upscale, padd=False
             )
             stack_sim = stack_sim + 1e-6  # Avoid division by zero
 
             ratio = pixel_values / stack_sim
             Hr = microscope_simulator_inverse_fast(
-                ratio, PSF_fft, calib, upsample=self.upscale, padd=False
+                ratio, PSF_fft, calibs, upsample=self.upscale, padd=False
             )
 
             estimate = estimate * (Hr / H_ones)
 
-        # print(f"GPU Time {time.time() - start} s")
-
         estimate = estimate / torch.max(estimate)
         torch.cuda.synchronize() if estimate.device.type == "cuda" else None
-        print("Deconvolution done.")
         return estimate

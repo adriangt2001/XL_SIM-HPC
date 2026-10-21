@@ -1,0 +1,19 @@
+# Models configs
+model_name: HAT
+model_config: configs/models/hat.json
+weights: runs/HAT/best_biosr/best_psnr
+lora: true
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.1
+lora_target_modules: [all-linear]
+lora_bias: none
+
+# Dataset, preprocessing and postprocessing
+dataset: data/BioSR
+split: validation
+test_size: 0.15
+batch_size: 1
+num_workers: 8
+first_crop: 1024
+second_crop: 512

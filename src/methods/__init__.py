@@ -72,7 +72,7 @@ def get_model(
                     "upscale": kwargs["upscale"],
                 }
 
-            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+            def postprocess_fn(output: torch.Tensor):
                 return output
 
         case "Burstormer":
@@ -81,7 +81,7 @@ def get_model(
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"]}
 
-            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+            def postprocess_fn(output: torch.Tensor):
                 return output
 
         case "HAT":
@@ -90,7 +90,7 @@ def get_model(
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"]}
 
-            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+            def postprocess_fn(output: torch.Tensor):
                 return output
 
         case "XLSIM":
@@ -102,7 +102,7 @@ def get_model(
                 pixel_values = pixel_values.reshape(B, S, 1, H, W)
                 return {"pixel_values": pixel_values}
 
-            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+            def postprocess_fn(output: torch.Tensor):
                 return output
 
         case "RL":
@@ -111,9 +111,7 @@ def get_model(
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"], "psf": kwargs["psf"][0]}
 
-            def postprocess_fn(
-                output: torch.Tensor, target: torch.Tensor | None = None
-            ):
+            def postprocess_fn(output: torch.Tensor):
                 processed_img = output
                 method = model.op
                 if "max" == method:
@@ -130,44 +128,41 @@ def get_model(
 
                 return processed_img
 
-            return model, preprocess_fn, postprocess_fn
-
         case "JRL":
             model = JRL.from_json_file(model_config)
 
             def preprocess_fn(**kwargs):
                 return {
                     "pixel_values": kwargs["pixel_values"],
-                    "calib": kwargs["calib"],
+                    "calibs": kwargs["calibs"],
                     "psf": kwargs["psf"],
                 }
 
-            def postprocess_fn(
-                output: torch.Tensor, target: torch.Tensor | None = None
-            ):
+            def postprocess_fn(output: torch.Tensor):
                 return output
 
-            return model, preprocess_fn, postprocess_fn
         case "Basic":
             model = BasicOP.from_json_file(model_config)
 
             def preprocess_fn(**kwargs):
                 return {"pixel_values": kwargs["pixel_values"]}
 
-            def postprocess_fn(output: torch.Tensor, target: torch.Tensor = None):
+            def postprocess_fn(output: torch.Tensor):
                 processed_img = output
-                # method = model.op
-                # if "max" == method:
-                #     processed_img = output
-                # elif "mean" == method:
-                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                #     processed_img = output / avg[..., None, None, None]
-                # elif "sum" == method:
-                #     avg = torch.mean(output / target, dim=list(range(1, output.ndim)))
-                #     processed_img = output / avg[..., None, None, None]
-                return processed_img
+                method = model.op
+                if "max" == method:
+                    processed_img = output
+                elif "mean" == method or "sum" == method:
+                    low = torch.quantile(output.flatten(), 1.0 / 100.0)
+                    high = torch.quantile(output.flatten(), 99.0 / 100.0)
 
-            return model, preprocess_fn, postprocess_fn
+                    if high <= low:
+                        processed_img = output
+
+                    processed_img = (output - low) / (high - low)
+                    processed_img = processed_img.clamp(0.0, 1.0)
+
+                return processed_img
 
         case _:
             raise ValueError(

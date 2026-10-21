@@ -1,0 +1,8 @@
+# Models configs
+model_name: RL
+model_config: configs/models/rlX2_mean.json
+weights: ""
+
+# Data
+hr_size: 1024,1024
+batch_size: 1

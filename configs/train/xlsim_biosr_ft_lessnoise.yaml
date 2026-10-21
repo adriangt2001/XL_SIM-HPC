@@ -1,0 +1,40 @@
+# Model configuration
+model_name: XLSIM
+model_config: configs/models/xlsim.json
+weights: runs/XLSIM/run_20260810_060528/best_psnr
+upscale: 2
+
+# Dataset, preprocessing and postprocessing
+dataset: data/BioSR
+test_size: 0.15
+batch_size: 2
+num_workers: 8
+first_crop: 1024
+second_crop: 64
+
+# Training
+num_iterations: 50000
+optimizer: adamw
+lr: 1e-4
+scheduler: cosine
+warmup_iterations: 500
+warmup_lr: 1e-7
+decay_iterations: [50000]
+decay_factor: 1e-7
+max_grad_norm: 1.0
+patience: 10
+valid_freq: 2000
+save_freq: 2000
+output_dir: runs
+report_scalar_freq: 100
+report_image_freq: 2000
+lora: true
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.1
+lora_target_modules: [all-linear]
+lora_bias: none
+
+# Simulator
+microscope_config: configs/simulator/lessnoise_microscope.yaml
+noise_config: configs/simulator/no_noise.yaml

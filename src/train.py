@@ -75,7 +75,6 @@ def main(args: Namespace):
         optimizer,
         scheduler,
         args.microscope_config,
-        args.noise_config,
         args.num_iterations,
         args.warmup_iterations,
         args.valid_freq,
@@ -289,12 +288,6 @@ if "__main__" == __name__:
         type=str,
         default="configs/simulator/default_microscope.yaml",
         help="Path to the microscope configuration",
-    )
-    parser.add_argument(
-        "--noise_config",
-        type=str,
-        default="configs/simulator/default_noise.yaml",
-        help="Path to the noise configuration",
     )
 
     args = parser.parse_args()

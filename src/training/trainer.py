@@ -28,7 +28,6 @@ class Trainer:
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
         microscope_filename: str,
-        noise_filename: str,
         max_iters: int,
         warmup_iters: int,
         valid_freq: int,
