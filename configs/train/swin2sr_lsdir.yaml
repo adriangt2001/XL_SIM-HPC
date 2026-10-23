@@ -1,7 +1,7 @@
 # Model configuration
 model_name: Swin2SR
-model_config: configs/models/swin2srX2.json
-upscale: 2
+model_config: configs/models/swin2srX4.json
+upscale: 4
 
 # Dataset, preprocessing and postprocessing
 dataset: data/LSDIR
@@ -12,7 +12,7 @@ first_crop: 1024
 second_crop: 64
 
 # Training
-num_iterations: 500000
+num_iterations: 1000
 optimizer: adamw
 lr: 2e-4
 scheduler: cosine
@@ -28,5 +28,4 @@ report_scalar_freq: 100
 report_image_freq: 10000
 
 # Simulator
-microscope_config: configs/simulator/default_microscope.yaml
-noise_config: configs/simulator/default_noise.yaml
+microscope_config: configs/simulator/lessnoise_microscope.yaml

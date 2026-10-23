@@ -37,3 +37,6 @@ torchaudio = { index = "pytorch" }
 name = "pytorch"
 url = "https://download.pytorch.org/whl/cu132"
 explicit = true
+
+[tool.uv]
+override-dependencies = ["numpy>=2"]

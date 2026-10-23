@@ -324,8 +324,9 @@ numba==0.68.0
     # via napari
 numcodecs==0.16.6
     # via zarr
-numpy==1.26.4
+numpy==2.5.4
     # via
+    #   --override (workspace)
     #   xl-sim (pyproject.toml)
     #   accelerate
     #   bermuda

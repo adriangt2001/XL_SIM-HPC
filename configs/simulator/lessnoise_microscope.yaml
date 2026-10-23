@@ -1,7 +1,7 @@
 # Configuration for a x2 downsampling from a 1024x1024 image
 pattern_case: multipoint
-cam_height: 512
-cam_width: 512
+cam_height: 256
+cam_width: 256
 cam_pix: 6.5
 binn_simu: 2
 single_plane: True
