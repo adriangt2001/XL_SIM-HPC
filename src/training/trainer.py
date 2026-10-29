@@ -43,7 +43,7 @@ class Trainer:
         checkpoint: str | None = None,
     ):
         ddp_kwargs = DistributedDataParallelKwargs(
-            broadcast_buffers=False, find_unused_parameters=True
+            broadcast_buffers=False, # find_unused_parameters=True
         )
 
         self.accelerator = Accelerator()
@@ -389,7 +389,7 @@ class Trainer:
                 )
                 images.append(
                     wandb.Image(
-                        image.clip(0, 1),
+                        image.clip(0, 1) * 255,
                         caption=f"Sample {i}:\n Top left: Target | Top right: Prediction\n Bottom left: Input C12",
                     )
                 )
